@@ -69,6 +69,8 @@ nav button[aria-current="page"]{color:var(--accent);border-top-color:var(--accen
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:90vw}
 .empty{text-align:center;color:var(--muted);padding:22px 10px}
 @media (prefers-reduced-motion:no-preference){main{animation:in .18s ease-out}@keyframes in{from{opacity:.4}to{opacity:1}}}
+.lnk{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:14px;font-weight:500;text-decoration:none;margin:0 8px 8px 0;cursor:pointer}
+.lnk.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 </style>
 
 <div class="bar"><h1>Vinted Seller Helper</h1><small id="today-date"></small></div>
@@ -81,8 +83,8 @@ var STATUSES=["Sourced","Listed","Sold","Shipped","Completed"];
 var CONDITIONS=["New with tags","New without tags","Excellent","Good","Satisfactory"];
 var FEE_PCT=0.05,FEE_FLAT=0.70,SHIP_WARN=3,STALE=30,DEF_PACK=0.75;
 var KEY="vinted_helper_v1";
-var TABS=[["today","Today"],["add","Add item"],["stock","Inventory"],["listing","Listing"],["price","Price"]];
-var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[]};
+var TABS=[["today","Today"],["add","Add"],["scan","Scan"],["stock","Stock"],["listing","Listing"],["price","Price"]];
+var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[],scan:{img:"",busy:false,err:"",result:null,price:0}};
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function num(v){var n=parseFloat(String(v).replace("$","").trim());return isNaN(n)?0:n}
@@ -247,12 +249,135 @@ function calcPrice(){
    +'<div><span>If they offer '+Math.round(buf*100)+'% off, you make</span><b class="num" style="color:var(--good)">'+money(net)+'</b></div>';
 }
 
+var GK="vinted_helper_gkey";
+var GAPI="https://generativelanguage.googleapis.com/v1beta/";
+var SCAN_PROMPT="You help a reseller list used clothing and goods on Vinted. Look at the photo and answer with one JSON object with these keys: title (short item name without the brand, such as straight leg jeans), brand (empty string unless you can see it on a tag or logo), brand_from_tag (true only if the brand text is readable in the photo), category (one or two words), size (empty string unless readable on a tag), size_from_tag (true only if the size is readable), color (main color), condition (one of: New with tags, New without tags, Excellent, Good, Satisfactory), flaws (visible flaws, or an empty string). Never guess a brand or a size. Return only the JSON.";
+function getKey(){try{return localStorage.getItem(GK)||""}catch(e){return ""}}
+function putKey(k){try{localStorage.setItem(GK,k)}catch(e){}}
+function dropKey(){try{localStorage.removeItem(GK)}catch(e){}}
+function freshScan(){return {img:"",busy:false,err:"",result:null,price:0}}
+function friendly(m){
+  m=String(m||"");
+  if(/api key|API_KEY|permission|denied/i.test(m))return "Google rejected the key. Remove it and save it again.";
+  if(/quota|rate|exhaust|429/i.test(m))return "The free limit is used up for now. Try again later or tomorrow.";
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Could not reach Google. Check your connection and try again.";
+  return m||"Something went wrong. Try again.";
+}
+function readPhoto(file){return new Promise(function(res,rej){
+  var fr=new FileReader();
+  fr.onload=function(){var img=new Image();
+    img.onload=function(){var k=Math.min(1,1024/Math.max(img.width,img.height));
+      var c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",0.82))};
+    img.onerror=function(){rej(new Error("Could not read that photo"))};img.src=fr.result};
+  fr.onerror=function(){rej(new Error("Could not read that photo"))};fr.readAsDataURL(file)})}
+function listModels(key){
+  return fetch(GAPI+"models?pageSize=200",{headers:{"x-goog-api-key":key}}).then(function(r){return r.json().then(function(j){
+    if(!r.ok)throw new Error((j.error&&j.error.message)||"Key check failed");
+    var ms=(j.models||[]).filter(function(m){return (m.supportedGenerationMethods||[]).indexOf("generateContent")>-1})
+      .map(function(m){return m.name.replace("models/","")})
+      .filter(function(n){return /^gemini/.test(n)&&!/image|tts|live|audio|embedding|robotics|computer|native|thinking|deep/i.test(n)});
+    ms.sort().reverse();
+    var rank=function(n){return (/flash-lite/.test(n)?0:/flash/.test(n)?2:4)+(/preview|exp/.test(n)?1:0)};
+    ms.sort(function(a,b){return rank(a)-rank(b)});
+    if(!ms.length)throw new Error("No Gemini model is available for this key.");
+    return ms})})}
+async function runScan(){
+  var sc=state.scan,key=getKey();
+  if(sc.busy)return;
+  sc.busy=true;sc.err="";render();
+  try{
+    var names=await listModels(key),b64=sc.img.split(",")[1],out=null,last="";
+    for(var i=0;i<Math.min(3,names.length)&&!out;i++){
+      var r=await fetch(GAPI+"models/"+names[i]+":generateContent",{method:"POST",
+        headers:{"Content-Type":"application/json","x-goog-api-key":key},
+        body:JSON.stringify({contents:[{parts:[{text:SCAN_PROMPT},{inline_data:{mime_type:"image/jpeg",data:b64}}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}})});
+      var j={};try{j=await r.json()}catch(e){}
+      if(r.ok){
+        var p=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts;
+        var t=p&&p[0]&&p[0].text||"";
+        out=JSON.parse(t.replace(/^\s*```(json)?/i,"").replace(/```\s*$/,""));
+      }else{
+        last=(j.error&&j.error.message)||("Error "+r.status);
+        if(r.status===400||r.status===403)break;
+      }
+    }
+    if(!out)throw new Error(last||"The model gave no answer.");
+    sc.result=out;
+  }catch(e){sc.err=friendly(e&&e.message)}
+  sc.busy=false;render();
+}
+function srcLinks(q){
+  var e=encodeURIComponent(q);
+  return '<a class="lnk" href="https://www.vinted.com/catalog?search_text='+e+'" target="_blank" rel="noopener">Vinted</a>'
+   +'<a class="lnk" href="https://www.ebay.com/sch/i.html?_nkw='+e+'&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay sold</a>'
+   +'<a class="lnk" href="https://poshmark.com/search?query='+e+'" target="_blank" rel="noopener">Poshmark</a>';
+}
+function tagNote(flag,val){
+  if(!val)return "";
+  return '<div class="meta" style="margin:-6px 0 10px">'+(flag?"Read from the tag":"A guess, check it")+'</div>';
+}
+function vScan(){
+  var key=getKey(),sc=state.scan,h="";
+  if(!key){
+    return '<div class="card"><h2>Set up the free scanner</h2>'
+     +'<p class="meta" style="margin:6px 0 12px">1. Open Google AI Studio and sign in.<br>2. Create an API key. No card is needed.<br>3. Paste it below. It stays on this phone.</p>'
+     +'<p style="margin:0 0 12px"><a class="lnk" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Open AI Studio</a></p>'
+     +'<div class="field"><label for="g-key">Gemini API key</label><input id="g-key" type="password" autocomplete="off" placeholder="Paste key"></div>'
+     +'<button class="pri" data-act="save-key">Save key</button>'
+     +'<p class="meta" style="margin-top:10px">Photos you scan are sent to Google. The free tier may use them to improve Google products, so keep faces and addresses out of the shot.</p></div>';
+  }
+  h+='<div class="card"><h2>Scan an item</h2><p class="meta" style="margin:6px 0 12px">Photograph the item with its tag in view.</p>'
+   +'<div class="row"><label class="lnk" for="g-cam">Take photo</label><label class="lnk" for="g-pick">Choose photo</label></div>'
+   +'<input id="g-cam" type="file" accept="image/*" capture="environment" hidden><input id="g-pick" type="file" accept="image/*" hidden>';
+  if(sc.img)h+='<img src="'+sc.img+'" alt="Photo to scan" style="display:block;max-width:100%;max-height:260px;border-radius:8px;margin:12px 0 0">';
+  if(sc.img&&!sc.result)h+='<div class="row" style="margin-top:12px"><button class="pri" data-act="scan-go">'+(sc.busy?"Scanning...":"Scan this photo")+'</button></div>';
+  if(sc.err)h+='<p style="color:var(--bad);margin:10px 0 0;font-size:14px">'+esc(sc.err)+'</p>';
+  h+='</div>';
+  if(sc.result){
+    var r=sc.result,q=[r.brand,r.title,r.size].filter(Boolean).join(" ");
+    h+='<div class="card" id="scanform"><h2>Review the scan</h2><p class="meta" style="margin:4px 0 12px">Fix anything wrong, then add it.</p>'
+     +fld("s-title","Item",r.title||"")
+     +fld("s-brand","Brand",r.brand||"")+tagNote(r.brand_from_tag,r.brand)
+     +'<div class="grid2">'+fld("s-size","Size",r.size||"")+fld("s-color","Color",r.color||"")+'</div>'+tagNote(r.size_from_tag,r.size)
+     +fld("s-category","Category",r.category||"")
+     +'<div class="field"><label for="s-condition">Condition</label><select id="s-condition">'+CONDITIONS.map(function(c){return '<option'+(c===r.condition?" selected":"")+'>'+c+'</option>'}).join("")+'</select><div class="meta">A guess from the photo, check it</div></div>'
+     +fld("s-flaws","Flaws (be honest)",r.flaws||"")
+     +'<div class="grid2">'+fld("s-cost","What you paid ($)","","number")+fld("s-profit","Profit you want ($)","10","number")+'</div>'
+     +'<div class="field"><label for="s-comps">Prices you found (optional, separate with commas)</label><input id="s-comps" inputmode="decimal" placeholder="22, 28, 31"></div>'
+     +'<div class="row" style="margin:0 0 4px">'+srcLinks(q)+'</div>'
+     +'<div class="preview" id="s-sug" style="margin:0 0 12px"></div>'
+     +'<div class="row"><button class="pri" data-act="scan-add">Add to inventory</button><button data-act="scan-reset">Scan another</button></div>'
+     +'<p class="meta" style="margin-top:10px">Scans are AI guesses. Check the tag, size, and flaws before you list.</p></div>';
+  }
+  h+='<div class="row between"><span class="meta">Free Gemini key saved on this phone</span><button class="sm" data-act="forget-key">Remove key</button></div>';
+  return h;
+}
+function scanSuggest(){
+  var el=document.getElementById("s-sug");if(!el)return;
+  var g=function(id){return num(document.getElementById(id).value)};
+  var cost=g("s-cost"),want=g("s-profit"),floor=cost+DEF_PACK+want;
+  var target=Math.round(floor/0.9);
+  var comps=(document.getElementById("s-comps").value.match(/\d+(\.\d+)?/g)||[]).map(Number).sort(function(a,b){return a-b});
+  var price=target,h="";
+  if(comps.length){
+    var n=comps.length,med=n%2?comps[(n-1)/2]:(comps[n/2-1]+comps[n/2])/2;
+    price=Math.max(1,Math.round(med));
+    var left=price-cost-DEF_PACK;
+    h='Comps: '+money(comps[0])+' to '+money(comps[n-1])+', median <b class="num">'+money(med)+'</b><br>Suggested list price: <b class="num">'+money(price)+'</b><br><span class="meta">You would make about '+money(left)+(left<want?", below your target of "+money(want):"")+'.</span>';
+  }else{
+    h='Price to hit your target: <b class="num">'+money(target)+'</b><br><span class="meta">Includes 10% room for offers. Add prices you found to compare.</span>';
+  }
+  state.scan.price=price;el.innerHTML=h;
+}
+
 function render(){
   var v=document.getElementById("view");
-  v.innerHTML=({today:vToday,add:vAdd,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
+  v.innerHTML=({today:vToday,add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
   document.getElementById("nav").innerHTML=TABS.map(function(t){return '<button data-tab="'+t[0]+'"'+(t[0]===state.tab?' aria-current="page"':"")+'>'+t[1]+'</button>'}).join("");
   if(state.tab==="add")formPreview();
   if(state.tab==="price")calcPrice();
+  if(state.tab==="scan")scanSuggest();
 }
 function go(tab){state.tab=tab;state.selling=null;state.armDelete=null;if(tab!=="add")state.editing=null;render();window.scrollTo(0,0)}
 function byId(id){return state.items.filter(function(i){return i.id===id})[0]}
@@ -286,6 +411,17 @@ document.addEventListener("click",function(e){
   else if(a==="confirm-sold"){var p=num(document.getElementById("sell-price").value);if(!p){toast("Enter the sale price");return}state.selling=null;setStatus(id,"Sold",p)}
   else if(a==="delete"){if(state.armDelete===id){state.items=state.items.filter(function(i){return i.id!==id});state.armDelete=null;persist();render()}else{state.armDelete=id;render()}}
   else if(a==="to-listing"){state.listId=id;state.tab="listing";render();window.scrollTo(0,0)}
+  else if(a==="save-key"){var kv=document.getElementById("g-key").value.trim();if(!kv){toast("Paste your key first");return}putKey(kv);render()}
+  else if(a==="forget-key"){dropKey();state.scan=freshScan();render()}
+  else if(a==="scan-go"){runScan()}
+  else if(a==="scan-reset"){state.scan=freshScan();render()}
+  else if(a==="scan-add"){
+    var sg=function(i){return document.getElementById(i).value.trim()};
+    if(!sg("s-title")){toast("Give the item a name first");return}
+    var sid=state.items.reduce(function(m,i){return Math.max(m,i.id)},0)+1;
+    state.items.push({id:sid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:sg("s-title"),brand:sg("s-brand"),category:sg("s-category"),size:sg("s-size"),color:sg("s-color"),measurements:"",flaws:sg("s-flaws"),notes:"",condition:sg("s-condition"),cost:num(sg("s-cost")),packaging:DEF_PACK,list_price:state.scan.price,free_shipping:0,ship_cost:0});
+    persist();toast("Added to inventory");state.scan=freshScan();go("stock");
+  }
   else if(a==="clear-examples"){state.items=state.items.filter(function(i){return !i.example});persist();render()}
   else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
   else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
@@ -301,8 +437,13 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){
   if(e.target.closest("#form"))formPreview();
   if(e.target.closest("#price"))calcPrice();
+  if(e.target.closest("#scanform"))scanSuggest();
 });
 document.addEventListener("change",function(e){
+  if(e.target.id==="g-cam"||e.target.id==="g-pick"){
+    var f=e.target.files&&e.target.files[0];
+    if(f)readPhoto(f).then(function(u){state.scan.img=u;state.scan.result=null;state.scan.err="";render()}).catch(function(er){state.scan.err=er.message;render()});
+  }
   if(e.target.id==="flt"){state.filter=e.target.value;render()}
   if(e.target.id==="l-item"){state.listId=parseInt(e.target.value,10)||null;render()}
 });
