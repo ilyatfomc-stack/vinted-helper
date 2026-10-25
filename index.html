@@ -1,0 +1,312 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Vinted Seller Helper</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-column phone app, sticky top bar, fixed bottom tab bar, card lists */
+:root{
+  --bg:#EEF3F3; --surface:#FFFFFF; --ink:#12292B; --muted:#587072; --line:#D5E0E1;
+  --accent:#0B7A85; --accent-ink:#FFFFFF; --accent-soft:#DDF1F2;
+  --good:#1D7448; --good-soft:#DFF3E7; --warn:#A8500A; --warn-soft:#FBEBD6; --bad:#B3261E; --bad-soft:#FBE3E1;
+  --f-display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --f-body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"DM Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1617; --surface:#152325; --ink:#E3EFEF; --muted:#8EA9AB; --line:#26393B;
+  --accent:#3EC4D0; --accent-ink:#06282B; --accent-soft:#12383C;
+  --good:#5ED08F; --good-soft:#133423; --warn:#F0A55A; --warn-soft:#3A2812; --bad:#FF8A80; --bad-soft:#40201D; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1617; --surface:#152325; --ink:#E3EFEF; --muted:#8EA9AB; --line:#26393B;
+  --accent:#3EC4D0; --accent-ink:#06282B; --accent-soft:#12383C;
+  --good:#5ED08F; --good-soft:#133423; --warn:#F0A55A; --warn-soft:#3A2812; --bad:#FF8A80; --bad-soft:#40201D; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;margin:0;
+  padding-block:0 84px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));-webkit-text-size-adjust:100%}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;margin:0;text-wrap:balance}
+h1{font-size:24px;line-height:1.15} h2{font-size:18px} h3{font-size:15px;font-weight:500}
+.bar{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:14px 0 10px;max-width:640px;margin:0 auto}
+.bar small{color:var(--muted);font-size:12px}
+main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.sec{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;margin:6px 0 -4px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-weight:500;white-space:nowrap}
+.chip.good{background:var(--good-soft);color:var(--good)} .chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.mute{background:var(--bg);color:var(--muted)}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat span{display:block;font-size:12px;color:var(--muted)} .stat b{font-family:var(--f-mono);font-size:20px;font-weight:500}
+.pipe{display:flex;gap:6px;flex-wrap:wrap}
+.pipe div{flex:1 1 60px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center;font-size:12px;color:var(--muted)}
+.pipe b{display:block;font-family:var(--f-mono);font-size:18px;color:var(--ink);font-weight:500}
+label{display:block;font-size:13px;color:var(--muted);margin:0 0 4px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:44px}
+textarea{min-height:140px;resize:vertical;line-height:1.5}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.field{margin:0 0 10px;min-width:0}
+button{font:inherit;font-size:14px;font-weight:500;min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.bad{color:var(--bad)} button.sm{min-height:36px;padding:4px 10px;font-size:13px}
+.act{border-left:4px solid var(--accent);border-radius:4px 10px 10px 4px}
+.act.warn{border-left-color:var(--warn)} .act.bad{border-left-color:var(--bad)}
+.item h3{overflow-wrap:anywhere}
+.meta{color:var(--muted);font-size:13px}
+.preview{background:var(--accent-soft);border-radius:8px;padding:10px;font-size:14px}
+.out{font-size:14px;display:grid;gap:8px}
+.out div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.out div:last-child{border:0}
+.check{display:flex;gap:10px;align-items:center;min-height:36px;font-size:14px;color:var(--ink);margin:0}
+.check input{width:20px;min-height:20px;height:20px}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);display:flex;
+  padding:4px max(8px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+nav button{flex:1;border:0;background:none;border-radius:0;color:var(--muted);font-size:12px;min-height:48px;padding:4px 2px;border-top:3px solid transparent}
+nav button[aria-current="page"]{color:var(--accent);border-top-color:var(--accent)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:90vw}
+.empty{text-align:center;color:var(--muted);padding:22px 10px}
+@media (prefers-reduced-motion:no-preference){main{animation:in .18s ease-out}@keyframes in{from{opacity:.4}to{opacity:1}}}
+</style>
+
+<div class="bar"><h1>Vinted Seller Helper</h1><small id="today-date"></small></div>
+<main id="view"></main>
+<div id="toast" hidden></div>
+<nav id="nav" aria-label="Sections"></nav>
+
+<script>
+var STATUSES=["Sourced","Listed","Sold","Shipped","Completed"];
+var CONDITIONS=["New with tags","New without tags","Excellent","Good","Satisfactory"];
+var FEE_PCT=0.05,FEE_FLAT=0.70,SHIP_WARN=3,STALE=30,DEF_PACK=0.75;
+var KEY="vinted_helper_v1";
+var TABS=[["today","Today"],["add","Add item"],["stock","Inventory"],["listing","Listing"],["price","Price"]];
+var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[]};
+
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function num(v){var n=parseFloat(String(v).replace("$","").trim());return isNaN(n)?0:n}
+function money(n){n=Math.round(n*100)/100;return (n<0?"-":"")+"$"+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function today(){return iso(new Date())}
+function daysAgo(n){var d=new Date();d.setDate(d.getDate()-n);return iso(d)}
+function daysSince(s){if(!s)return 0;var d=new Date(s+"T00:00:00");var t=new Date();t.setHours(0,0,0,0);return Math.max(0,Math.round((t-d)/864e5))}
+function isSold(it){return it.status==="Sold"||it.status==="Shipped"||it.status==="Completed"}
+function profit(it){var price=(isSold(it)&&it.sold_price)?it.sold_price:it.list_price;var ship=it.free_shipping?it.ship_cost:0;return price-it.cost-it.packaging-ship}
+function buyerTotal(p,s){return p+s+p*FEE_PCT+FEE_FLAT}
+
+function load(){
+  try{var raw=localStorage.getItem(KEY);if(raw){var a=JSON.parse(raw);if(Array.isArray(a)){state.items=a;return}}}catch(e){}
+  state.items=examples();
+}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(state.items))}catch(e){}}
+function examples(){
+  function mk(id,o){return Object.assign({id:id,example:true,category:"",measurements:"",notes:"",packaging:DEF_PACK,free_shipping:0,ship_cost:0,sold_price:0,date_added:daysAgo(40),date_listed:"",date_sold:""},o)}
+  return [
+    mk(1,{title:"501 jeans",brand:"Levi's",category:"Jeans",size:"W30 L32",color:"Blue",condition:"Good",flaws:"Small fray at hem",cost:5,list_price:28,status:"Sold",date_listed:daysAgo(12),date_sold:daysAgo(3),sold_price:26}),
+    mk(2,{title:"Zip hoodie",brand:"Nike",category:"Hoodie",size:"M",color:"Grey",condition:"Excellent",flaws:"",cost:6,list_price:30,status:"Sourced"}),
+    mk(3,{title:"Wool blazer",brand:"Zara",category:"Blazer",size:"S",color:"Black",condition:"Good",flaws:"",cost:4,list_price:24,status:"Listed",date_listed:daysAgo(34)})
+  ];
+}
+
+function stats(){
+  var it=state.items,sold=it.filter(isSold);
+  var counts={};STATUSES.forEach(function(s){counts[s]=it.filter(function(i){return i.status===s}).length});
+  var rev=0,pr=0;sold.forEach(function(i){rev+=i.sold_price;pr+=profit(i)});
+  var tied=0;it.forEach(function(i){if(i.status==="Sourced"||i.status==="Listed")tied+=i.cost});
+  return {counts:counts,rev:rev,pr:pr,avg:sold.length?pr/sold.length:0,tied:tied,
+    ship:it.filter(function(i){return i.status==="Sold"}),
+    list:it.filter(function(i){return i.status==="Sourced"}),
+    stale:it.filter(function(i){return i.status==="Listed"&&daysSince(i.date_listed)>=STALE})};
+}
+function buildListing(it){
+  var parts=[it.brand,it.title,it.size?"Size "+it.size:"",it.color].filter(Boolean);
+  var title=parts.join(" - ").slice(0,100);
+  var L=["Condition: "+it.condition];
+  if(it.size)L.push("Size: "+it.size);
+  if(it.measurements)L.push("Measurements: "+it.measurements);
+  L.push("Flaws: "+(it.flaws||"None that I can see - see photos."));
+  if(it.notes)L.push(it.notes);
+  L.push("Smoke-free home. Ships within 1-2 days. Bundle 2+ items for a discount!");
+  var tags=[it.brand,it.category,it.color].filter(Boolean).map(function(w){return "#"+w.toLowerCase().replace(/[^a-z0-9]/g,"")}).join(" ");
+  if(tags)L.push(tags);
+  return {title:title,body:L.join("\n")};
+}
+
+function toast(m){var t=document.getElementById("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(function(){t.hidden=true},2200)}
+function copy(text,el){
+  var done=function(){toast("Copied")};
+  var fallback=function(){if(el){el.focus();el.select();}toast("Press and hold to copy")};
+  try{navigator.clipboard.writeText(text).then(done,fallback)}catch(e){fallback()}
+}
+
+function chipFor(s){return s==="Sold"?"warn":(s==="Completed"||s==="Shipped")?"good":s==="Sourced"?"mute":""}
+
+function vToday(){
+  var s=stats(),h="";
+  var hasEx=state.items.some(function(i){return i.example});
+  if(hasEx)h+='<div class="card row between"><span class="meta">Example items are shown so you can see how it works.</span><button class="sm" data-act="clear-examples">Clear examples</button></div>';
+  h+='<div class="sec">Your next actions</div>';
+  var acts="";
+  s.ship.forEach(function(i){var d=daysSince(i.date_sold);var late=d>=SHIP_WARN;
+    acts+='<div class="card act '+(late?"bad":"warn")+'"><div class="row between"><h3>Ship: '+esc(i.title)+'</h3><span class="chip '+(late?"bad":"warn")+'">Sold '+d+'d ago</span></div><div class="meta">'+(late?"Ship now, the deadline is close.":"Vinted gives about 5 days to ship.")+'</div></div>'});
+  s.list.forEach(function(i){acts+='<div class="card act"><div class="row between"><h3>List: '+esc(i.title)+'</h3><button class="sm" data-act="to-listing" data-id="'+i.id+'">Make text</button></div><div class="meta">Sourced, not listed yet.</div></div>'});
+  s.stale.forEach(function(i){acts+='<div class="card act warn"><div class="row between"><h3>Refresh: '+esc(i.title)+'</h3><span class="chip warn">'+daysSince(i.date_listed)+' days</span></div><div class="meta">Lower the price, reshoot photos, or relist.</div></div>'});
+  h+=acts||'<div class="card empty">Nothing urgent. Source and add more items.</div>';
+  h+='<div class="sec">Pipeline</div><div class="pipe">'+STATUSES.map(function(k){return '<div><b>'+s.counts[k]+'</b>'+k+'</div>'}).join("")+'</div>';
+  h+='<div class="sec">Money</div><div class="stats">'
+    +'<div class="stat"><span>Profit</span><b style="color:'+(s.pr>=0?"var(--good)":"var(--bad)")+'">'+money(s.pr)+'</b></div>'
+    +'<div class="stat"><span>Revenue</span><b>'+money(s.rev)+'</b></div>'
+    +'<div class="stat"><span>Avg profit per sale</span><b>'+money(s.avg)+'</b></div>'
+    +'<div class="stat"><span>Cash in unsold stock</span><b>'+money(s.tied)+'</b></div></div>';
+  h+='<p class="meta">Vinted charges sellers 0%. Buyers pay a Buyer Protection fee plus shipping, so keep item price and shipping looking like a deal.</p>';
+  return h;
+}
+
+function fld(id,label,val,type,extra){return '<div class="field"><label for="'+id+'">'+label+'</label><input id="'+id+'" type="'+(type||"text")+'" '+(type==="number"?'inputmode="decimal" step="0.01" ':"")+'value="'+esc(val)+'" '+(extra||"")+'></div>'}
+function vAdd(){
+  var it=state.editing?state.items.filter(function(i){return i.id===state.editing})[0]:null;
+  it=it||{title:"",brand:"",category:"",size:"",color:"",measurements:"",flaws:"",notes:"",condition:"Excellent",cost:"",packaging:DEF_PACK,list_price:"",free_shipping:0,ship_cost:""};
+  var h='<div class="card" id="form"><h2>'+(state.editing?"Edit item":"Add item")+'</h2><div style="height:12px"></div>'
+   +fld("f-title","Item (e.g. 501 jeans)",it.title)
+   +'<div class="grid2">'+fld("f-brand","Brand",it.brand)+fld("f-category","Category",it.category)+fld("f-size","Size",it.size)+fld("f-color","Color",it.color)+'</div>'
+   +fld("f-measurements","Measurements",it.measurements)+fld("f-flaws","Flaws (be honest)",it.flaws)+fld("f-notes","Extra notes",it.notes)
+   +'<div class="field"><label for="f-condition">Condition</label><select id="f-condition">'+CONDITIONS.map(function(c){return '<option'+(c===it.condition?" selected":"")+'>'+c+'</option>'}).join("")+'</select></div>'
+   +'<div class="grid2">'+fld("f-cost","What you paid ($)",it.cost,"number")+fld("f-packaging","Packaging ($)",it.packaging,"number")+fld("f-list_price","List price ($)",it.list_price,"number")+fld("f-ship_cost","Shipping if you pay ($)",it.ship_cost,"number")+'</div>'
+   +'<label class="check" for="f-free"><input id="f-free" type="checkbox"'+(it.free_shipping?" checked":"")+'>I am offering free shipping</label>'
+   +'<div class="preview" id="f-preview" style="margin:10px 0 12px"></div>'
+   +'<div class="row"><button class="pri" data-act="save">Save item</button><button data-act="clear-form">Clear</button></div></div>';
+  return h;
+}
+function readForm(){
+  var g=function(k){return document.getElementById("f-"+k).value.trim()};
+  var d={};["title","brand","category","size","color","measurements","flaws","notes","condition"].forEach(function(k){d[k]=g(k)});
+  ["cost","packaging","list_price","ship_cost"].forEach(function(k){d[k]=num(g(k))});
+  d.free_shipping=document.getElementById("f-free").checked?1:0;return d;
+}
+function formPreview(){
+  var el=document.getElementById("f-preview");if(!el)return;
+  var d=readForm();d.status="Listed";d.sold_price=0;
+  el.innerHTML='Estimated profit: <b class="num">'+money(profit(d))+'</b><br><span class="meta">Buyer pays about '+money(buyerTotal(d.list_price,d.free_shipping?0:4))+' with fee and about $4 shipping.</span>';
+}
+
+function nextBtn(i){
+  var m={Sourced:["listed","Mark listed"],Listed:["sold","Mark sold"],Sold:["shipped","Mark shipped"],Shipped:["completed","Complete"]}[i.status];
+  return m?'<button class="sm pri" data-act="'+m[0]+'" data-id="'+i.id+'">'+m[1]+'</button>':"";
+}
+function vStock(){
+  var h='<div class="row between"><div style="flex:1;min-width:140px"><label for="flt">Show</label><select id="flt"><option>All</option>'+STATUSES.map(function(s){return '<option'+(s===state.filter?" selected":"")+'>'+s+'</option>'}).join("")+'</select></div></div>';
+  var list=state.items.filter(function(i){return state.filter==="All"||i.status===state.filter});
+  if(!list.length)h+='<div class="card empty">No items here yet.<br>Add one from the Add item tab.</div>';
+  list.slice().sort(function(a,b){return b.id-a.id}).forEach(function(i){
+    var ref=i.status==="Listed"?i.date_listed:(isSold(i)?i.date_sold:i.date_added);
+    h+='<div class="card item"><div class="row between"><h3>'+esc(i.title)+'</h3><span class="chip '+chipFor(i.status)+'">'+i.status+'</span></div>'
+     +'<div class="meta">'+esc([i.brand,i.size].filter(Boolean).join(" · "))+(i.example?' · <span class="chip mute">Example</span>':"")+'</div>'
+     +'<div class="row between" style="margin:8px 0"><span class="num">'+money(isSold(i)&&i.sold_price?i.sold_price:i.list_price)+'</span><span class="num" style="color:'+(profit(i)>=0?"var(--good)":"var(--bad)")+'">'+money(profit(i))+' profit</span><span class="meta">'+daysSince(ref)+'d</span></div>';
+    if(state.selling===i.id){
+      h+='<div class="field"><label for="sell-price">Sold for ($)</label><input id="sell-price" type="number" inputmode="decimal" step="0.01" value="'+esc(i.list_price)+'"></div><div class="row"><button class="sm pri" data-act="confirm-sold" data-id="'+i.id+'">Confirm sale</button><button class="sm" data-act="cancel-sold">Cancel</button></div>';
+    }else{
+      h+='<div class="row">'+nextBtn(i)+'<button class="sm" data-act="edit" data-id="'+i.id+'">Edit</button><button class="sm" data-act="to-listing" data-id="'+i.id+'">Listing text</button><button class="sm bad" data-act="delete" data-id="'+i.id+'">'+(state.armDelete===i.id?"Tap again to delete":"Delete")+'</button></div>';
+    }
+    h+='</div>';
+  });
+  h+='<div class="card"><h3>Backup and records</h3><p class="meta" style="margin:4px 0 10px">Your items live in this browser only. Copy a backup now and then.</p><div class="row"><button class="sm" data-act="copy-backup">Copy backup</button><button class="sm" data-act="copy-csv">Copy as CSV</button></div>'
+   +'<div class="field" style="margin-top:12px"><label for="restore">Paste a backup to restore</label><textarea id="restore" style="min-height:80px" placeholder="Paste backup text here"></textarea></div><button class="sm" data-act="restore">Restore backup</button></div>';
+  return h;
+}
+
+var PHOTOS=["Front, natural light, plain background","Back","Tag or label","Flat lay with size reference","Close-up of any flaw","Close-up of fabric or detail"];
+function vListing(){
+  var h='<div class="card"><div class="field"><label for="l-item">Item</label><select id="l-item"><option value="">Choose an item</option>'+state.items.map(function(i){return '<option value="'+i.id+'"'+(i.id===state.listId?" selected":"")+'>'+esc(i.title)+'</option>'}).join("")+'</select></div>';
+  var it=state.items.filter(function(i){return i.id===state.listId})[0];
+  if(!it){h+='<div class="empty">Pick an item to make its title and description.</div></div>'}
+  else{var b=buildListing(it);
+    h+='<div class="field"><label for="l-title">Title</label><input id="l-title" value="'+esc(b.title)+'"></div><div class="row" style="margin:0 0 12px"><button class="sm pri" data-act="copy-title">Copy title</button></div>'
+     +'<div class="field"><label for="l-body">Description</label><textarea id="l-body">'+esc(b.body)+'</textarea></div><div class="row"><button class="sm pri" data-act="copy-body">Copy description</button></div></div>';
+  }
+  if(it){h+='<div class="card"><h3>Photo checklist</h3><div style="margin-top:6px">'+PHOTOS.map(function(p,n){return '<label class="check" for="ph'+n+'"><input id="ph'+n+'" type="checkbox">'+p+'</label>'}).join("")+'</div></div>'}
+  return h;
+}
+
+function vPrice(){
+  return '<div class="card" id="price"><h2>Price helper</h2><p class="meta" style="margin:4px 0 12px">Find a price that protects your profit and leaves room for offers.</p><div class="grid2">'
+   +fld("p-cost","What you paid ($)","5","number")+fld("p-pack","Packaging ($)","0.75","number")+fld("p-profit","Profit you want ($)","10","number")
+   +fld("p-ship","Shipping you cover ($)","0","number")+fld("p-buf","Offer buffer (%)","10","number")+fld("p-buyship","Buyer shipping ($)","4","number")
+   +'</div><div class="out" id="p-out" style="margin-top:6px"></div></div>';
+}
+function calcPrice(){
+  var o=document.getElementById("p-out");if(!o)return;
+  var g=function(k){return num(document.getElementById("p-"+k).value)};
+  var floor=g("cost")+g("pack")+g("ship")+g("profit");
+  var buf=Math.min(Math.max(g("buf"),0),50)/100;
+  var list=Math.round(floor/(1-buf));
+  var net=list*(1-buf)-g("cost")-g("pack")-g("ship");
+  o.innerHTML='<div><span>Lowest price that hits your target</span><b class="num">'+money(floor)+'</b></div>'
+   +'<div><span>Suggested list price</span><b class="num">'+money(list)+'</b></div>'
+   +'<div><span>Buyer would pay about</span><b class="num">'+money(buyerTotal(list,g("buyship")))+'</b></div>'
+   +'<div><span>If they offer '+Math.round(buf*100)+'% off, you make</span><b class="num" style="color:var(--good)">'+money(net)+'</b></div>';
+}
+
+function render(){
+  var v=document.getElementById("view");
+  v.innerHTML=({today:vToday,add:vAdd,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
+  document.getElementById("nav").innerHTML=TABS.map(function(t){return '<button data-tab="'+t[0]+'"'+(t[0]===state.tab?' aria-current="page"':"")+'>'+t[1]+'</button>'}).join("");
+  if(state.tab==="add")formPreview();
+  if(state.tab==="price")calcPrice();
+}
+function go(tab){state.tab=tab;state.selling=null;state.armDelete=null;if(tab!=="add")state.editing=null;render();window.scrollTo(0,0)}
+function byId(id){return state.items.filter(function(i){return i.id===id})[0]}
+function setStatus(id,st,price){
+  var i=byId(id);if(!i)return;i.status=st;
+  if(st==="Listed")i.date_listed=today();
+  if(st==="Sold"){i.date_sold=today();if(price!=null)i.sold_price=price}
+  persist();render();
+}
+function csv(){
+  var cols=["id","title","brand","category","size","color","condition","cost","packaging","list_price","free_shipping","ship_cost","status","date_added","date_listed","date_sold","sold_price"];
+  var q=function(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  return [cols.join(",")].concat(state.items.map(function(i){return cols.map(function(c){return q(i[c])}).join(",")})).join("\n");
+}
+
+document.addEventListener("click",function(e){
+  var t=e.target.closest("[data-tab]");if(t){go(t.getAttribute("data-tab"));return}
+  var b=e.target.closest("[data-act]");if(!b)return;
+  var a=b.getAttribute("data-act"),id=parseInt(b.getAttribute("data-id"),10);
+  if(a!=="delete"&&state.armDelete){state.armDelete=null}
+  if(a==="save"){
+    var d=readForm();if(!d.title){toast("Give the item a name first");document.getElementById("f-title").focus();return}
+    if(state.editing){Object.assign(byId(state.editing),d)}
+    else{var nid=state.items.reduce(function(m,i){return Math.max(m,i.id)},0)+1;state.items.push(Object.assign({id:nid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0},d))}
+    persist();toast("Saved");state.editing=null;go("stock");
+  }else if(a==="clear-form"){state.editing=null;render()}
+  else if(a==="edit"){state.editing=id;state.tab="add";render();window.scrollTo(0,0)}
+  else if(a==="listed"||a==="shipped"||a==="completed"){setStatus(id,{listed:"Listed",shipped:"Shipped",completed:"Completed"}[a])}
+  else if(a==="sold"){state.selling=id;render()}
+  else if(a==="cancel-sold"){state.selling=null;render()}
+  else if(a==="confirm-sold"){var p=num(document.getElementById("sell-price").value);if(!p){toast("Enter the sale price");return}state.selling=null;setStatus(id,"Sold",p)}
+  else if(a==="delete"){if(state.armDelete===id){state.items=state.items.filter(function(i){return i.id!==id});state.armDelete=null;persist();render()}else{state.armDelete=id;render()}}
+  else if(a==="to-listing"){state.listId=id;state.tab="listing";render();window.scrollTo(0,0)}
+  else if(a==="clear-examples"){state.items=state.items.filter(function(i){return !i.example});persist();render()}
+  else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
+  else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
+  else if(a==="copy-backup"){copy(JSON.stringify(state.items),document.getElementById("restore"))}
+  else if(a==="copy-csv"){copy(csv(),document.getElementById("restore"))}
+  else if(a==="restore"){
+    try{var arr=JSON.parse(document.getElementById("restore").value);
+      if(!Array.isArray(arr)||!arr.every(function(x){return x&&typeof x.title==="string"&&typeof x.id==="number"}))throw 0;
+      state.items=arr;persist();toast("Backup restored");render();
+    }catch(err){toast("That is not a valid backup")}
+  }
+});
+document.addEventListener("input",function(e){
+  if(e.target.closest("#form"))formPreview();
+  if(e.target.closest("#price"))calcPrice();
+});
+document.addEventListener("change",function(e){
+  if(e.target.id==="flt"){state.filter=e.target.value;render()}
+  if(e.target.id==="l-item"){state.listId=parseInt(e.target.value,10)||null;render()}
+});
+
+document.getElementById("today-date").textContent=new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+load();render();
+</script>
