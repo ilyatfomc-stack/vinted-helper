@@ -3,25 +3,28 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Vinted Seller Helper</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caprasimo&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: one-column phone app, sticky top bar, fixed bottom tab bar, card lists */
 :root{
-  --bg:#EEF3F3; --surface:#FFFFFF; --ink:#12292B; --muted:#587072; --line:#D5E0E1;
-  --accent:#0B7A85; --accent-ink:#FFFFFF; --accent-soft:#DDF1F2;
-  --good:#1D7448; --good-soft:#DFF3E7; --warn:#A8500A; --warn-soft:#FBEBD6; --bad:#B3261E; --bad-soft:#FBE3E1;
-  --f-display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --bg:#F4E7C6; --surface:#FFF6DE; --ink:#3F2410; --muted:#7A5A3C; --line:#CDB083; --edge:#4A2C14; --field:#FFFBEF;
+  --accent:#A8400E; --accent-ink:#FFF3D6; --accent-soft:#FBE6A8;
+  --good:#4F5E1A; --good-soft:#DCE5A8; --warn:#8A4B00; --warn-soft:#F8D9A0; --bad:#A32A1A; --bad-soft:#F6C8B8;
+  --nav:#4A2C14; --tagink:#3F2410; --s1:#B84A12; --s2:#E0A526; --s3:#6B7A2A;
+  --f-display:"Caprasimo","Cooper Black","Bookman Old Style",Georgia,serif;
   --f-body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"DM Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0D1617; --surface:#152325; --ink:#E3EFEF; --muted:#8EA9AB; --line:#26393B;
-  --accent:#3EC4D0; --accent-ink:#06282B; --accent-soft:#12383C;
-  --good:#5ED08F; --good-soft:#133423; --warn:#F0A55A; --warn-soft:#3A2812; --bad:#FF8A80; --bad-soft:#40201D; color-scheme:dark}}
+  --bg:#241509; --surface:#34200F; --ink:#F4E7C6; --muted:#C2A47E; --line:#5A3E22; --edge:#8A6A44; --field:#2A1808;
+  --accent:#E8A33A; --accent-ink:#2A1606; --accent-soft:#4A3114;
+  --good:#B9CC6B; --good-soft:#3A4118; --warn:#F2B35E; --warn-soft:#4A3010; --bad:#FF9A85; --bad-soft:#4D1F16;
+  --nav:#1A0E05; --tagink:#3F2410; --s1:#C8662B; --s2:#D79A22; --s3:#7E8F36; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0D1617; --surface:#152325; --ink:#E3EFEF; --muted:#8EA9AB; --line:#26393B;
-  --accent:#3EC4D0; --accent-ink:#06282B; --accent-soft:#12383C;
-  --good:#5ED08F; --good-soft:#133423; --warn:#F0A55A; --warn-soft:#3A2812; --bad:#FF8A80; --bad-soft:#40201D; color-scheme:dark}
+  --bg:#241509; --surface:#34200F; --ink:#F4E7C6; --muted:#C2A47E; --line:#5A3E22; --edge:#8A6A44; --field:#2A1808;
+  --accent:#E8A33A; --accent-ink:#2A1606; --accent-soft:#4A3114;
+  --good:#B9CC6B; --good-soft:#3A4118; --warn:#F2B35E; --warn-soft:#4A3010; --bad:#FF9A85; --bad-soft:#4D1F16;
+  --nav:#1A0E05; --tagink:#3F2410; --s1:#C8662B; --s2:#D79A22; --s3:#7E8F36; color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;margin:0;
@@ -72,6 +75,28 @@ nav button[aria-current="page"]{color:var(--accent);border-top-color:var(--accen
 @media (prefers-reduced-motion:no-preference){main{animation:in .18s ease-out}@keyframes in{from{opacity:.4}to{opacity:1}}}
 .lnk{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:14px;font-weight:500;text-decoration:none;margin:0 8px 8px 0;cursor:pointer}
 .lnk.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+body{background:linear-gradient(var(--s1) 0 8px,var(--s2) 8px 16px,var(--s3) 16px 24px,var(--bg) 24px)}
+.bar{padding-top:34px}
+h1{font-size:22px;font-weight:400;line-height:1.1}
+h2{font-weight:400}
+h3{font-family:var(--f-body);font-weight:500}
+.sec{font-family:var(--f-display);font-weight:400;font-size:15px;letter-spacing:.02em;text-transform:none;color:var(--accent)}
+.card,.stat,.pipe div{border:2px solid var(--edge);border-radius:14px}
+input,select,textarea{background:var(--field);border:2px solid var(--edge);border-radius:10px}
+button,.lnk{border:2px solid var(--edge);border-radius:99px}
+button.pri,.lnk.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--edge)}
+.preview{border:2px dashed var(--edge);border-radius:12px}
+.act{position:relative;padding-left:26px;color:var(--tagink);background:var(--tg,#C9D58A);border:2px solid var(--edge);border-radius:2px 14px 14px 2px}
+.act.warn{--tg:#F8D77A}
+.act.bad{--tg:#F2A58A}
+.act::before{content:"";position:absolute;left:8px;top:50%;width:8px;height:8px;border-radius:50%;background:var(--bg);border:2px solid var(--edge);transform:translateY(-50%)}
+.act .meta{color:#5E4126}
+nav{background:var(--nav);border-top:3px solid var(--edge)}
+nav button{color:#F0DDB4;border:0;border-radius:99px;margin:2px 1px;min-height:44px;padding:4px 0}
+nav button[aria-current="page"]{background:var(--s2);color:#3F2410;border:0}
+.pipe b,.stat b{color:var(--ink)}
+.act,.act.warn,.act.bad{border-left:2px solid var(--edge)}
 </style>
 
 <div class="bar" style="align-items:center"><div><h1>Vinted Seller Helper</h1><small id="today-date"></small></div><div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;flex:0 0 auto"><a class="lnk" style="margin:0;min-height:36px;justify-content:center" href="https://www.vinted.com" target="_blank" rel="noopener">Open Vinted</a><button class="sm" id="theme-btn" data-act="theme" aria-label="Change color theme">Theme: Auto</button></div></div>
