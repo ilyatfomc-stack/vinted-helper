@@ -252,13 +252,27 @@ function vStock(){
 }
 
 var PHOTOS=["Front, natural light, plain background","Back","Tag or label","Flat lay with size reference","Close-up of any flaw","Close-up of fabric or detail"];
+function copyRow(label,val,key){
+  if(!val&&val!==0)return "";
+  return '<div class="row between" style="margin:0 0 8px;gap:8px"><div style="min-width:0"><div class="meta">'+label+'</div><div style="overflow-wrap:anywhere">'+esc(String(val))+'</div></div><button class="sm" data-act="copy-val" data-v="'+esc(String(val))+'">Copy</button></div>';
+}
+function vQueue(){
+  var q=state.items.filter(function(i){return i.status==="Sourced"});
+  if(!q.length)return '';
+  return '<div class="card"><h3>Ready to list ('+q.length+')</h3><div class="meta" style="margin:2px 0 8px">Tap one to get its listing text.</div>'
+   +q.map(function(i){return '<div class="row between" style="margin:0 0 8px;gap:8px"><span style="min-width:0;overflow-wrap:anywhere">'+esc(i.title)+(i.list_price?' <span class="meta">'+money(i.list_price)+'</span>':'')+'</span><button class="sm" data-act="to-listing" data-id="'+i.id+'">List</button></div>'}).join("")+'</div>';
+}
 function vListing(){
-  var h='<div class="card"><div class="field"><label for="l-item">Item</label><select id="l-item"><option value="">Choose an item</option>'+state.items.map(function(i){return '<option value="'+i.id+'"'+(i.id===state.listId?" selected":"")+'>'+esc(i.title)+'</option>'}).join("")+'</select></div>';
+  var h=vQueue()+'<div class="card"><div class="field"><label for="l-item">Item</label><select id="l-item"><option value="">Choose an item</option>'+state.items.map(function(i){return '<option value="'+i.id+'"'+(i.id===state.listId?" selected":"")+'>'+esc(i.title)+'</option>'}).join("")+'</select></div>';
   var it=state.items.filter(function(i){return i.id===state.listId})[0];
   if(!it){h+='<div class="empty">Pick an item to make its title and description.</div></div>'}
   else{var b=buildListing(it);
     h+='<div class="field"><label for="l-title">Title</label><input id="l-title" value="'+esc(b.title)+'"></div><div class="row" style="margin:0 0 12px"><button class="sm pri" data-act="copy-title">Copy title</button></div>'
-     +'<div class="field"><label for="l-body">Description</label><textarea id="l-body">'+esc(b.body)+'</textarea></div><div class="row"><button class="sm pri" data-act="copy-body">Copy description</button></div></div>';
+     +'<div class="field"><label for="l-body">Description</label><textarea id="l-body">'+esc(b.body)+'</textarea></div><div class="row"><button class="sm pri" data-act="copy-body">Copy description</button></div></div>'
+     +'<div class="card"><h3>Form fields, in Vinted order</h3><div class="meta" style="margin:2px 0 10px">Copy each one into the matching box on the Vinted sell page.</div>'
+     +copyRow("Brand",it.brand)+copyRow("Category",it.category)+copyRow("Size",it.size)+copyRow("Condition",it.condition)+copyRow("Color",it.color)+copyRow("Price ($)",it.list_price||"")
+     +'<div class="row" style="margin-top:12px"><a class="lnk" href="https://www.vinted.com/items/new" target="_blank" rel="noopener">Open Vinted sell page</a>'
+     +(it.status==="Sourced"?'<button class="pri" data-act="listed" data-id="'+it.id+'">Mark as listed</button>':'<span class="chip good">'+esc(it.status)+'</span>')+'</div></div>';
   }
   if(it){h+='<div class="card"><h3>Photo checklist</h3><div style="margin-top:6px">'+PHOTOS.map(function(p,n){return '<label class="check" for="ph'+n+'"><input id="ph'+n+'" type="checkbox">'+p+'</label>'}).join("")+'</div></div>'}
   return h;
@@ -500,6 +514,7 @@ document.addEventListener("click",function(e){
     persist();toast("Added to inventory");go("stock");
   }
   else if(a==="clear-examples"){state.items=state.items.filter(function(i){return !i.example});persist();render()}
+  else if(a==="copy-val"){copy(b.getAttribute("data-v"),null)}
   else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
   else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
   else if(a==="copy-backup"){copy(JSON.stringify(state.items),document.getElementById("restore"))}
