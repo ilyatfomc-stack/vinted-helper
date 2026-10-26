@@ -283,8 +283,9 @@ function calcPrice(){
    +'<div><span>If they offer '+Math.round(buf*100)+'% off, you make</span><b class="num" style="color:var(--good)">'+money(net)+'</b></div>';
 }
 
-var GK="vinted_helper_gkey";
-var GAPI="https://generativelanguage.googleapis.com/v1beta/";
+var GK="vinted_helper_akey";
+var AAPI="https://api.anthropic.com/v1/messages";
+var AMODEL="claude-haiku-5-5";
 var SCAN_PROMPT="You help a reseller list used clothing and goods on Vinted. Look at the photo and answer with one JSON object with these keys: title (short item name without the brand, such as straight leg jeans), brand (empty string unless you can see it on a tag or logo), brand_from_tag (true only if the brand text is readable in the photo), category (one or two words), size (empty string unless readable on a tag), size_from_tag (true only if the size is readable), color (main color), condition (one of: New with tags, New without tags, Excellent, Good, Satisfactory), flaws (visible flaws, or an empty string). Never guess a brand or a size. Return only the JSON.";
 function getKey(){try{return localStorage.getItem(GK)||""}catch(e){return ""}}
 function putKey(k){try{localStorage.setItem(GK,k)}catch(e){}}
@@ -292,9 +293,10 @@ function dropKey(){try{localStorage.removeItem(GK)}catch(e){}}
 function freshScan(){return {img:"",busy:false,err:"",result:null,price:0}}
 function friendly(m){
   m=String(m||"");
-  if(/api key|API_KEY|permission|denied/i.test(m))return "Google rejected the key. Remove it and save it again.";
-  if(/quota|rate|exhaust|429/i.test(m))return "The free limit is used up for now. Try again later or tomorrow.";
-  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Could not reach Google. Check your connection and try again.";
+  if(/invalid x-api-key|authentication|401/i.test(m))return "Anthropic rejected the key. Remove it and save it again.";
+  if(/credit|billing|balance/i.test(m))return "Your Anthropic account is out of credit. Add a few dollars in the Console.";
+  if(/rate|429|overloaded|529/i.test(m))return "Too many requests right now. Wait a moment and try again.";
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Could not reach Anthropic. Check your connection and try again.";
   return m||"Something went wrong. Try again.";
 }
 function readPhoto(file){return new Promise(function(res,rej){
@@ -305,39 +307,21 @@ function readPhoto(file){return new Promise(function(res,rej){
       c.getContext("2d").drawImage(img,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",0.82))};
     img.onerror=function(){rej(new Error("Could not read that photo"))};img.src=fr.result};
   fr.onerror=function(){rej(new Error("Could not read that photo"))};fr.readAsDataURL(file)})}
-function listModels(key){
-  return fetch(GAPI+"models?pageSize=200",{headers:{"x-goog-api-key":key}}).then(function(r){return r.json().then(function(j){
-    if(!r.ok)throw new Error((j.error&&j.error.message)||"Key check failed");
-    var ms=(j.models||[]).filter(function(m){return (m.supportedGenerationMethods||[]).indexOf("generateContent")>-1})
-      .map(function(m){return m.name.replace("models/","")})
-      .filter(function(n){return /^gemini/.test(n)&&!/image|tts|live|audio|embedding|robotics|computer|native|thinking|deep/i.test(n)});
-    ms.sort().reverse();
-    var rank=function(n){return (/flash-lite/.test(n)?0:/flash/.test(n)?2:4)+(/preview|exp/.test(n)?1:0)};
-    ms.sort(function(a,b){return rank(a)-rank(b)});
-    if(!ms.length)throw new Error("No Gemini model is available for this key.");
-    return ms})})}
 async function runScan(){
   var sc=state.scan,key=getKey();
   if(sc.busy)return;
   sc.busy=true;sc.err="";render();
   try{
-    var names=await listModels(key),b64=sc.img.split(",")[1],out=null,last="";
-    for(var i=0;i<Math.min(3,names.length)&&!out;i++){
-      var r=await fetch(GAPI+"models/"+names[i]+":generateContent",{method:"POST",
-        headers:{"Content-Type":"application/json","x-goog-api-key":key},
-        body:JSON.stringify({contents:[{parts:[{text:SCAN_PROMPT},{inline_data:{mime_type:"image/jpeg",data:b64}}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}})});
-      var j={};try{j=await r.json()}catch(e){}
-      if(r.ok){
-        var p=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts;
-        var t=p&&p[0]&&p[0].text||"";
-        out=JSON.parse(t.replace(/^\s*```(json)?/i,"").replace(/```\s*$/,""));
-      }else{
-        last=(j.error&&j.error.message)||("Error "+r.status);
-        if(r.status===400||r.status===403)break;
-      }
-    }
-    if(!out)throw new Error(last||"The model gave no answer.");
-    sc.result=out;
+    var b64=sc.img.split(",")[1];
+    var r=await fetch(AAPI,{method:"POST",
+      headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:AMODEL,max_tokens:600,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:SCAN_PROMPT}]}]})});
+    var j={};try{j=await r.json()}catch(e){}
+    if(!r.ok)throw new Error((j.error&&j.error.message)||("Error "+r.status));
+    var t=(j.content&&j.content[0]&&j.content[0].text)||"";
+    var m=t.match(/\{[\s\S]*\}/);
+    if(!m)throw new Error("The model gave no answer.");
+    sc.result=JSON.parse(m[0]);
   }catch(e){sc.err=friendly(e&&e.message)}
   sc.busy=false;render();
 }
@@ -354,12 +338,12 @@ function tagNote(flag,val){
 function vScan(){
   var key=getKey(),sc=state.scan,h="";
   if(!key){
-    return '<div class="card"><h2>Set up the free scanner</h2>'
-     +'<p class="meta" style="margin:6px 0 12px">1. Open Google AI Studio and sign in.<br>2. Create an API key. No card is needed.<br>3. Paste it below. It stays on this phone.</p>'
-     +'<p style="margin:0 0 12px"><a class="lnk" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Open AI Studio</a></p>'
-     +'<div class="field"><label for="g-key">Gemini API key</label><input id="g-key" type="password" autocomplete="off" placeholder="Paste key"></div>'
+    return '<div class="card"><h2>Set up the scanner</h2>'
+     +'<p class="meta" style="margin:6px 0 12px">1. Open the Anthropic Console and sign in.<br>2. Add a few dollars of credit under Billing.<br>3. Create an API key and paste it below. It stays on this phone.</p>'
+     +'<p style="margin:0 0 12px"><a class="lnk" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Open Console</a></p>'
+     +'<div class="field"><label for="g-key">Claude API key</label><input id="g-key" type="password" autocomplete="off" placeholder="sk-ant-..."></div>'
      +'<button class="pri" data-act="save-key">Save key</button>'
-     +'<p class="meta" style="margin-top:10px">Photos you scan are sent to Google. The free tier may use them to improve Google products, so keep faces and addresses out of the shot.</p></div>';
+     +'<p class="meta" style="margin-top:10px">Each scan costs about a cent or less. Photos are sent to Anthropic. Keep faces and addresses out of the shot.</p></div>';
   }
   h+='<div class="card"><h2>Scan an item</h2><p class="meta" style="margin:6px 0 12px">Photograph the item with its tag in view.</p>'
    +'<div class="row"><label class="lnk" for="g-cam">Take photo</label><label class="lnk" for="g-pick">Choose photo</label></div>'
@@ -384,7 +368,7 @@ function vScan(){
      +'<div class="row"><button class="pri" data-act="scan-add">Add to inventory</button><button data-act="scan-reset">Scan another</button></div>'
      +'<p class="meta" style="margin-top:10px">Scans are AI guesses. Check the tag, size, and flaws before you list.</p></div>';
   }
-  h+='<div class="row between"><span class="meta">Free Gemini key saved on this phone</span><button class="sm" data-act="forget-key">Remove key</button></div>';
+  h+='<div class="row between"><span class="meta">Claude key saved on this phone</span><button class="sm" data-act="forget-key">Remove key</button></div>';
   return h;
 }
 function scanSuggest(){
