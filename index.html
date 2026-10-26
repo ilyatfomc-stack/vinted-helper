@@ -329,13 +329,13 @@ async function runScan(){
     var b64=sc.img.split(",")[1];
     var r=await fetch(AAPI,{method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:AMODEL,max_tokens:600,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:SCAN_PROMPT}]}]})});
+      body:JSON.stringify({model:AMODEL,max_tokens:1500,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},{type:"text",text:SCAN_PROMPT}]}]})});
     var j={};try{j=await r.json()}catch(e){}
     if(!r.ok)throw new Error((j.error&&j.error.message)||("Error "+r.status));
-    var t=(j.content&&j.content[0]&&j.content[0].text)||"";
+    var t=(j.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
     var m=t.match(/\{[\s\S]*\}/);
-    if(!m)throw new Error("The model gave no answer.");
-    sc.result=JSON.parse(m[0]);
+    if(!m)throw new Error(t?("Claude replied, but not in the expected format: "+t.slice(0,140)):("No text came back (stop reason: "+(j.stop_reason||"unknown")+"). Try again."));
+    try{sc.result=JSON.parse(m[0])}catch(pe){throw new Error("Claude's answer could not be read. Try again.")}
   }catch(e){sc.err=friendly(e&&e.message)}
   sc.busy=false;render();
 }
