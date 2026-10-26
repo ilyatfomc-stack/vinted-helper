@@ -488,6 +488,7 @@ async function findPlaces(zip,miles){
       arr.forEach(function(e){
         var la=parseFloat(e.lat),lo=parseFloat(e.lon),a=e.address||{};
         var name=e.name||a.shop||a.amenity||"";if(!name)return;
+        if(/^(highway|place|boundary|landuse|waterway|natural|railway)$/.test(e.category||""))return;
         if(/repair|conservation|restoration|church|school/i.test((e.type||"")+" "+name)&&!/thrift|resale|consign|goodwill/i.test(name))return;
         var d=milesBetween(lat,lon,la,lo);if(d>miles)return;
         var k=name.toLowerCase()+"|"+la.toFixed(3)+"|"+lo.toFixed(3);if(seen[k])return;seen[k]=1;
