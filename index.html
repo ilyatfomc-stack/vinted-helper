@@ -110,7 +110,7 @@ var CONDITIONS=["New with tags","New without tags","Excellent","Good","Satisfact
 var FEE_PCT=0.05,FEE_FLAT=0.70,SHIP_WARN=3,STALE=30,DEF_PACK=0.75;
 var KEY="vinted_helper_v1";
 var TABS=[["today","Today"],["buy","Buy"],["add","Add"],["scan","Scan"],["stock","Stock"],["listing","Listing"],["price","Price"]];
-var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[],scan:{img:"",busy:false,err:"",result:null,price:0},buy:{ok:false}};
+var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[],scan:{img:"",busy:false,err:"",result:null,price:0},buy:{ok:false},find:{busy:false,err:"",res:null,zip:"",miles:50}};
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function num(v){var n=parseFloat(String(v).replace("$","").trim());return isNaN(n)?0:n}
@@ -450,9 +450,79 @@ function buyCalc(){
    +'<div><span>Most you should pay</span><b class="num">'+money(maxPay)+'</b></div></div>';
 }
 
+var ZK="vinted_helper_zip";
+function getZip(){try{return localStorage.getItem(ZK)||""}catch(e){return ""}}
+function milesBetween(a,b,c,d){var R=3958.8,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r,h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)*Math.sin(y/2);return 2*R*Math.asin(Math.sqrt(h))}
+function placeKind(t){
+  if(t.amenity==="marketplace"||/flea/i.test(t.name||""))return "Flea market";
+  if(t.shop==="antiques")return "Antiques";
+  if(t.shop==="vintage"||/vintage|retro/i.test(t.name||""))return "Vintage";
+  if(t.shop==="charity")return "Charity thrift";
+  if(t.shop==="clothes")return "Resale clothing";
+  return "Thrift / resale";
+}
+async function findPlaces(zip,miles){
+  var f=state.find;if(f.busy)return;
+  f.busy=true;f.err="";f.res=null;f.zip=zip;f.miles=miles;render();
+  try{
+    var zr=await fetch("https://api.zippopotam.us/us/"+encodeURIComponent(zip));
+    if(!zr.ok)throw new Error("That zip code was not found.");
+    var zj=await zr.json(),pl=zj.places&&zj.places[0];
+    if(!pl)throw new Error("That zip code was not found.");
+    var lat=parseFloat(pl.latitude),lon=parseFloat(pl.longitude);
+    f.place={city:pl["place name"],st:pl["state abbreviation"],zip:zip};
+    try{localStorage.setItem(ZK,zip)}catch(e){}
+    var rad=Math.round(miles*1609.34);
+    var q='[out:json][timeout:25];('
+      +'nwr["shop"~"^(second_hand|charity|antiques|vintage)$"](around:'+rad+','+lat+','+lon+');'
+      +'nwr["shop"="clothes"]["second_hand"~"^(yes|only)$"](around:'+rad+','+lat+','+lon+');'
+      +'nwr["amenity"="marketplace"](around:'+rad+','+lat+','+lon+');'
+      +');out center tags 400;';
+    var r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
+    if(!r.ok)throw new Error(r.status===429||r.status===504?"The map service is busy. Try again in a minute, or pick a smaller distance.":"The map service had a problem. Try again.");
+    var j=await r.json(),seen={},out=[];
+    (j.elements||[]).forEach(function(e){
+      var t=e.tags||{};if(!t.name)return;
+      var la=e.lat!=null?e.lat:(e.center&&e.center.lat),lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
+      if(la==null||lo==null)return;
+      var k=t.name.toLowerCase()+"|"+la.toFixed(3)+"|"+lo.toFixed(3);if(seen[k])return;seen[k]=1;
+      var addr=[[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" "),t["addr:city"]].filter(Boolean).join(", ");
+      out.push({name:t.name,kind:placeKind(t),addr:addr,phone:t.phone||t["contact:phone"]||"",hours:t.opening_hours||"",web:t.website||t["contact:website"]||"",la:la,lo:lo,d:milesBetween(lat,lon,la,lo)});
+    });
+    out.sort(function(a,b){return a.d-b.d});
+    f.total=out.length;f.res=out.slice(0,40);
+  }catch(e){f.err=/Failed to fetch|NetworkError|Load failed/i.test(String(e&&e.message))?"Could not reach the map service. Check your connection.":(e&&e.message)||"Something went wrong."}
+  f.busy=false;render();
+}
+function vFind(){
+  var f=state.find,z=f.zip||getZip(),m=f.miles||50;
+  var h='<div class="card" id="findform"><h3>Where to shop</h3><p class="meta" style="margin:4px 0 10px">Enter a zip code to find thrift stores, antique shops and flea markets nearby.</p>'
+   +'<div class="grid2"><div class="field"><label for="z-zip">Zip code</label><input id="z-zip" inputmode="numeric" maxlength="5" value="'+esc(z)+'" placeholder="32312"></div>'
+   +'<div class="field"><label for="z-mi">Distance</label><select id="z-mi">'+[10,25,50,100,250].map(function(n){return '<option value="'+n+'"'+(n===m?" selected":"")+'>'+n+' miles</option>'}).join("")+'</select></div></div>'
+   +'<div class="row"><button class="pri" data-act="find-go">'+(f.busy?"Searching...":"Find places")+'</button></div>';
+  if(f.err)h+='<p style="color:var(--bad);margin:10px 0 0;font-size:14px">'+esc(f.err)+'</p>';
+  if(f.res&&f.place){
+    var p=f.place,city=encodeURIComponent(p.city.replace(/ /g,"-"));
+    h+='<div class="row" style="margin:12px 0 4px"><a class="lnk" href="https://www.estatesales.net/'+p.st+'/'+city+'/'+p.zip+'" target="_blank" rel="noopener">Estate sales near '+esc(p.zip)+'</a>'
+     +'<a class="lnk" href="https://www.facebook.com/marketplace/search/?query='+encodeURIComponent("vintage clothing")+'" target="_blank" rel="noopener">Marketplace</a></div>';
+    h+='<div class="meta" style="margin:8px 0">'+(f.total?('Showing the closest '+f.res.length+(f.total>f.res.length?' of '+f.total:'')+' within '+f.miles+' miles of '+esc(p.city)+', '+p.st+'. Hours and stock may be out of date, so call or check before you go.'):'No listings found in that area. Try a bigger distance. Small shops are not always on the map.')+'</div>';
+    h+=f.res.map(function(r){
+      var gm="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(r.name+" "+(r.addr||r.la+","+r.lo));
+      return '<div style="border-top:1px solid var(--edge);padding:10px 0"><div class="row between" style="gap:8px"><b style="overflow-wrap:anywhere">'+esc(r.name)+'</b><span class="meta" style="white-space:nowrap">'+r.d.toFixed(r.d<10?1:0)+' mi</span></div>'
+       +'<div class="meta">'+esc(r.kind)+(r.addr?' · '+esc(r.addr):'')+'</div>'
+       +(r.hours?'<div class="meta">Hours: '+esc(r.hours)+'</div>':'')
+       +'<div class="row" style="margin-top:6px"><a class="lnk" href="'+gm+'" target="_blank" rel="noopener">Map</a>'
+       +(r.phone?'<a class="lnk" href="tel:'+esc(r.phone.replace(/[^\d+]/g,""))+'">Call</a>':'')
+       +(/^https?:\/\//.test(r.web)?'<a class="lnk" href="'+esc(r.web)+'" target="_blank" rel="noopener">Website</a>':'')+'</div></div>';
+    }).join("");
+    h+='<p class="meta" style="margin-top:8px">Map data from OpenStreetMap contributors.</p>';
+  }
+  return h+'</div>';
+}
+
 function render(){
   var v=document.getElementById("view");
-  v.innerHTML=({today:vToday,buy:vBuy,add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
+  v.innerHTML=({today:vToday,buy:function(){return vBuy()+vFind()},add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
   document.getElementById("nav").innerHTML=TABS.map(function(t){return '<button data-tab="'+t[0]+'"'+(t[0]===state.tab?' aria-current="page"':"")+'>'+t[1]+'</button>'}).join("");
   if(state.tab==="add")formPreview();
   if(state.tab==="price")calcPrice();
@@ -514,6 +584,11 @@ document.addEventListener("click",function(e){
     persist();toast("Added to inventory");go("stock");
   }
   else if(a==="clear-examples"){state.items=state.items.filter(function(i){return !i.example});persist();render()}
+  else if(a==="find-go"){
+    var zz=document.getElementById("z-zip").value.trim();
+    if(!/^\d{5}$/.test(zz)){toast("Enter a 5 digit zip code");return}
+    findPlaces(zz,parseInt(document.getElementById("z-mi").value,10)||50);
+  }
   else if(a==="copy-val"){copy(b.getAttribute("data-v"),null)}
   else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
   else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
