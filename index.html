@@ -64,7 +64,7 @@ button.bad{color:var(--bad)} button.sm{min-height:36px;padding:4px 10px;font-siz
 .check input{width:20px;min-height:20px;height:20px}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);display:flex;
   padding:4px max(8px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
-nav button{flex:1;border:0;background:none;border-radius:0;color:var(--muted);font-size:12px;min-height:48px;padding:4px 2px;border-top:3px solid transparent}
+nav button{flex:1;border:0;background:none;border-radius:0;color:var(--muted);font-size:11px;min-height:48px;padding:4px 0;border-top:3px solid transparent}
 nav button[aria-current="page"]{color:var(--accent);border-top-color:var(--accent)}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:90vw}
 .empty{text-align:center;color:var(--muted);padding:22px 10px}
@@ -83,8 +83,8 @@ var STATUSES=["Sourced","Listed","Sold","Shipped","Completed"];
 var CONDITIONS=["New with tags","New without tags","Excellent","Good","Satisfactory"];
 var FEE_PCT=0.05,FEE_FLAT=0.70,SHIP_WARN=3,STALE=30,DEF_PACK=0.75;
 var KEY="vinted_helper_v1";
-var TABS=[["today","Today"],["add","Add"],["scan","Scan"],["stock","Stock"],["listing","Listing"],["price","Price"]];
-var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[],scan:{img:"",busy:false,err:"",result:null,price:0}};
+var TABS=[["today","Today"],["buy","Buy"],["add","Add"],["scan","Scan"],["stock","Stock"],["listing","Listing"],["price","Price"]];
+var state={tab:"today",editing:null,filter:"All",selling:null,armDelete:null,listId:null,items:[],scan:{img:"",busy:false,err:"",result:null,price:0},buy:{ok:false}};
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function num(v){var n=parseFloat(String(v).replace("$","").trim());return isNaN(n)?0:n}
@@ -371,13 +371,61 @@ function scanSuggest(){
   state.scan.price=price;el.innerHTML=h;
 }
 
+function buyPrompt(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value.trim():""};
+  var shelf=num(g("b-price")),min=num(g("b-min"))||10;
+  return "I am at a store deciding whether to buy this item to resell on Vinted. The shelf price is "+(shelf?money(shelf):"[price]")+". I want at least "+money(min)+" profit after about $0.75 for packaging.\n\nLook at my photo (item, tag, and any flaws) and tell me:\n1. What the item is: brand, type, size, color. Only what you can actually read or see. If you cannot read the brand or size, say so instead of guessing.\n2. Condition problems I should check before buying (stains, pilling, fading, holes, missing parts).\n3. A realistic resale price range on Vinted in this condition, and how sure you are. Say plainly if this brand or item is one you do not know well.\n4. The search words I should use to find sold prices.\n5. BUY, MAYBE, or SKIP at the shelf price, with one line of reasoning.";
+}
+function vBuy(){
+  return '<div class="card" id="buyform"><h2>Buy check</h2><p class="meta" style="margin:4px 0 12px">At the shelf, find out if it is worth buying.</p>'
+   +'<div class="grid2">'+fld("b-price","Shelf price ($)","","number")+fld("b-min","Minimum profit ($)","10","number")+'</div>'
+   +fld("b-q","Search words (brand, item, size)","")
+   +'<div class="row" id="b-links" style="margin:0 0 4px"></div>'
+   +'<div class="field"><label for="b-comps">Prices you found (3 to 5, separate with commas)</label><input id="b-comps" inputmode="decimal" placeholder="22, 28, 31"></div>'
+   +fld("b-fee","Selling fee (%)","0","number")
+   +'<div class="meta" style="margin:-4px 0 12px">Vinted charges sellers 0%. Raise this if you plan to sell somewhere else.</div>'
+   +'<div class="preview" id="b-out" style="margin:0 0 12px"></div>'
+   +'<div class="row"><button class="pri" data-act="buy-add">I bought it, add to inventory</button></div></div>'
+   +'<div class="card"><h3>Ask Claude about the photo</h3><p class="meta" style="margin:4px 0 10px">In the Claude app, take a photo of the item and its tag, then paste this prompt.</p>'
+   +'<div class="row"><button class="sm pri" data-act="buy-copy">Copy prompt</button></div>'
+   +'<div class="field" style="margin-top:10px"><label for="b-prompt">Prompt preview</label><textarea id="b-prompt" readonly style="min-height:120px"></textarea></div></div>';
+}
+function buyCalc(){
+  var el=document.getElementById("b-out");if(!el)return;
+  var g=function(id){return document.getElementById(id).value};
+  var pe=document.getElementById("b-prompt");if(pe)pe.value=buyPrompt();
+  var shelf=num(g("b-price")),min=num(g("b-min")),fee=Math.min(Math.max(num(g("b-fee")),0),50)/100;
+  var comps=(g("b-comps").match(/\d+(\.\d+)?/g)||[]).map(Number).sort(function(a,b){return a-b});
+  var q=g("b-q").trim();
+  var lk=document.getElementById("b-links");
+  if(lk)lk.innerHTML=q?srcLinks(q):'<span class="meta">Type search words to get comparison links.</span>';
+  if(!comps.length||!shelf){el.innerHTML='<span class="meta">Enter the shelf price and 3 to 5 prices you found. The verdict appears here.</span>';state.buy={ok:false};return}
+  var n=comps.length,med=n%2?comps[(n-1)/2]:(comps[n/2-1]+comps[n/2])/2;
+  var net=med*(1-fee)-DEF_PACK,pf=net-shelf,roi=pf/shelf*100,maxPay=Math.max(0,net-min);
+  var verdict,cls,note;
+  if(pf<=0){verdict="Skip";cls="bad";note="You would lose money at this price."}
+  else if(pf>=min&&n>=3){verdict="Buy";cls="good";note="Meets your minimum profit."}
+  else if(pf<min){verdict="Maybe";cls="warn";note="Profit is below your minimum."}
+  else{verdict="Maybe";cls="warn";note="Only "+n+" price"+(n===1?"":"s")+". Find at least 3 for a firmer answer."}
+  if(comps[n-1]>comps[0]*2)note+=" The prices vary a lot, so match the condition and size.";
+  state.buy={ok:true,med:med};
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap"><span class="chip '+cls+'" style="font-size:16px;padding:4px 14px">'+verdict+'</span><span class="meta">'+note+'</span></div>'
+   +'<div class="out">'
+   +'<div><span>Typical resale (median of '+n+')</span><b class="num">'+money(med)+'</b></div>'
+   +'<div><span>You keep after fees and packaging</span><b class="num">'+money(net)+'</b></div>'
+   +'<div><span>Profit at the shelf price</span><b class="num" style="color:'+(pf>=0?"var(--good)":"var(--bad)")+'">'+money(pf)+'</b></div>'
+   +'<div><span>Return on what you pay</span><b class="num">'+Math.round(roi)+'%</b></div>'
+   +'<div><span>Most you should pay</span><b class="num">'+money(maxPay)+'</b></div></div>';
+}
+
 function render(){
   var v=document.getElementById("view");
-  v.innerHTML=({today:vToday,add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
+  v.innerHTML=({today:vToday,buy:vBuy,add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
   document.getElementById("nav").innerHTML=TABS.map(function(t){return '<button data-tab="'+t[0]+'"'+(t[0]===state.tab?' aria-current="page"':"")+'>'+t[1]+'</button>'}).join("");
   if(state.tab==="add")formPreview();
   if(state.tab==="price")calcPrice();
   if(state.tab==="scan")scanSuggest();
+  if(state.tab==="buy")buyCalc();
 }
 function go(tab){state.tab=tab;state.selling=null;state.armDelete=null;if(tab!=="add")state.editing=null;render();window.scrollTo(0,0)}
 function byId(id){return state.items.filter(function(i){return i.id===id})[0]}
@@ -422,6 +470,16 @@ document.addEventListener("click",function(e){
     state.items.push({id:sid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:sg("s-title"),brand:sg("s-brand"),category:sg("s-category"),size:sg("s-size"),color:sg("s-color"),measurements:"",flaws:sg("s-flaws"),notes:"",condition:sg("s-condition"),cost:num(sg("s-cost")),packaging:DEF_PACK,list_price:state.scan.price,free_shipping:0,ship_cost:0});
     persist();toast("Added to inventory");state.scan=freshScan();go("stock");
   }
+  else if(a==="buy-copy"){copy(document.getElementById("b-prompt").value,document.getElementById("b-prompt"))}
+  else if(a==="buy-add"){
+    var bg=function(i){return document.getElementById(i).value.trim()};
+    var bshelf=num(bg("b-price"));
+    if(!bg("b-q")){toast("Add search words so the item has a name");return}
+    if(!bshelf){toast("Enter the shelf price");return}
+    var bid=state.items.reduce(function(m,i){return Math.max(m,i.id)},0)+1;
+    state.items.push({id:bid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:bg("b-q"),brand:"",category:"",size:"",color:"",measurements:"",flaws:"",notes:"",condition:"Good",cost:bshelf,packaging:DEF_PACK,list_price:(state.buy&&state.buy.ok)?Math.round(state.buy.med):0,free_shipping:0,ship_cost:0});
+    persist();toast("Added to inventory");go("stock");
+  }
   else if(a==="clear-examples"){state.items=state.items.filter(function(i){return !i.example});persist();render()}
   else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
   else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
@@ -438,6 +496,7 @@ document.addEventListener("input",function(e){
   if(e.target.closest("#form"))formPreview();
   if(e.target.closest("#price"))calcPrice();
   if(e.target.closest("#scanform"))scanSuggest();
+  if(e.target.closest("#buyform"))buyCalc();
 });
 document.addEventListener("change",function(e){
   if(e.target.id==="g-cam"||e.target.id==="g-pick"){
