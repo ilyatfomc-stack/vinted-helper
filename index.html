@@ -452,25 +452,21 @@ function buyCalc(){
 
 var ZK="vinted_helper_zip";
 function getZip(){try{return localStorage.getItem(ZK)||""}catch(e){return ""}}
-function milesBetween(a,b,c,d){var R=3958.8,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r,h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)*Math.sin(y/2);return 2*R*Math.asin(Math.sqrt(h))}
-function placeKind(t){
-  if(t.amenity==="marketplace"||/flea/i.test(t.name||""))return "Flea market";
-  if(t.shop==="antiques")return "Antiques";
-  if(t.shop==="vintage"||/vintage|retro/i.test(t.name||""))return "Vintage";
-  if(t.shop==="charity")return "Charity thrift";
-  if(t.shop==="clothes")return "Resale clothing";
+var FIND_TERMS=["thrift store","goodwill","salvation army","consignment","vintage","antique","flea market","resale","habitat restore"];
+function placeKind(t,n){
+  var s=((t||"")+" "+(n||"")).toLowerCase();
+  if(/flea|marketplace/.test(s))return "Flea market";
+  if(/antique/.test(s))return "Antiques";
+  if(/vintage|retro/.test(s))return "Vintage";
+  if(/consign|resale/.test(s))return "Consignment / resale";
+  if(/charity|goodwill|salvation|habitat|restore|humane|hospice/.test(s))return "Charity thrift";
   return "Thrift / resale";
 }
-var OVER=["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
-function overpass(q){
-  var acs=OVER.map(function(){return new AbortController()});
-  var tries=OVER.map(function(u,i){
-    var to=setTimeout(function(){acs[i].abort()},25000);
-    return fetch(u,{method:"POST",signal:acs[i].signal,headers:{"content-type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)})
-      .then(function(r){clearTimeout(to);if(!r.ok)throw new Error("bad "+r.status);return r.json()});
-  });
-  return Promise.any(tries).then(function(j){acs.forEach(function(c){try{c.abort()}catch(e){}});return j},
-    function(){throw new Error("The map service is busy right now. Try again in a minute, or pick a smaller distance.")});
+function milesBetween(a,b,c,d){var R=3958.8,r=Math.PI/180,x=(c-a)*r,y=(d-b)*r,h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)*Math.sin(y/2);return 2*R*Math.asin(Math.sqrt(h))}
+function nomSearch(term,vb){
+  var ac=new AbortController(),to=setTimeout(function(){ac.abort()},12000);
+  return fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=40&bounded=1&viewbox="+vb+"&q="+encodeURIComponent(term),{signal:ac.signal})
+    .then(function(r){clearTimeout(to);if(!r.ok)throw new Error("bad "+r.status);return r.json()});
 }
 async function findPlaces(zip,miles){
   var f=state.find;if(f.busy)return;
@@ -483,21 +479,23 @@ async function findPlaces(zip,miles){
     var lat=parseFloat(pl.latitude),lon=parseFloat(pl.longitude);
     f.place={city:pl["place name"],st:pl["state abbreviation"],zip:zip};
     try{localStorage.setItem(ZK,zip)}catch(e){}
-    var rad=Math.round(miles*1609.34);
-    var q='[out:json][timeout:25];('
-      +'nwr["shop"~"^(second_hand|charity|antiques|vintage)$"](around:'+rad+','+lat+','+lon+');'
-      +'nwr["shop"="clothes"]["second_hand"~"^(yes|only)$"](around:'+rad+','+lat+','+lon+');'
-      +'nwr["amenity"="marketplace"](around:'+rad+','+lat+','+lon+');'
-      +');out center tags 400;';
-    var j=await overpass(q),seen={},out=[];
-    (j.elements||[]).forEach(function(e){
-      var t=e.tags||{};if(!t.name)return;
-      var la=e.lat!=null?e.lat:(e.center&&e.center.lat),lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
-      if(la==null||lo==null)return;
-      var k=t.name.toLowerCase()+"|"+la.toFixed(3)+"|"+lo.toFixed(3);if(seen[k])return;seen[k]=1;
-      var addr=[[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" "),t["addr:city"]].filter(Boolean).join(", ");
-      out.push({name:t.name,kind:placeKind(t),addr:addr,phone:t.phone||t["contact:phone"]||"",hours:t.opening_hours||"",web:t.website||t["contact:website"]||"",la:la,lo:lo,d:milesBetween(lat,lon,la,lo)});
-    });
+    var dl=miles/69,dn=miles/(69*Math.cos(lat*Math.PI/180));
+    var vb=[lon-dn,lat+dl,lon+dn,lat-dl].join(",");
+    var seen={},out=[],ok=0;
+    for(var i=0;i<FIND_TERMS.length;i++){
+      if(i)await new Promise(function(r){setTimeout(r,1100)});
+      var arr;try{arr=await nomSearch(FIND_TERMS[i],vb);ok++}catch(e){continue}
+      arr.forEach(function(e){
+        var la=parseFloat(e.lat),lo=parseFloat(e.lon),a=e.address||{};
+        var name=e.name||a.shop||a.amenity||"";if(!name)return;
+        if(/repair|conservation|restoration|church|school/i.test((e.type||"")+" "+name)&&!/thrift|resale|consign|goodwill/i.test(name))return;
+        var d=milesBetween(lat,lon,la,lo);if(d>miles)return;
+        var k=name.toLowerCase()+"|"+la.toFixed(3)+"|"+lo.toFixed(3);if(seen[k])return;seen[k]=1;
+        var addr=[[a.house_number,a.road].filter(Boolean).join(" "),a.city||a.town||a.village||""].filter(Boolean).join(", ");
+        out.push({name:name,kind:placeKind(e.type,name),addr:addr,phone:"",hours:"",web:"",la:la,lo:lo,d:d});
+      });
+    }
+    if(!ok)throw new Error("Could not reach the map service. Check your connection and try again.");
     out.sort(function(a,b){return a.d-b.d});
     f.total=out.length;f.res=out.slice(0,40);
   }catch(e){f.err=/Failed to fetch|NetworkError|Load failed/i.test(String(e&&e.message))?"Could not reach the map service. Check your connection.":(e&&e.message)||"Something went wrong."}
@@ -524,7 +522,7 @@ function vFind(){
        +(r.phone?'<a class="lnk" href="tel:'+esc(r.phone.replace(/[^\d+]/g,""))+'">Call</a>':'')
        +(/^https?:\/\//.test(r.web)?'<a class="lnk" href="'+esc(r.web)+'" target="_blank" rel="noopener">Website</a>':'')+'</div></div>';
     }).join("");
-    h+='<p class="meta" style="margin-top:8px">Map data from OpenStreetMap contributors.</p>';
+    h+='<p class="meta" style="margin-top:8px">Map data from OpenStreetMap contributors. Small shops may be missing, so also check estate sales and Marketplace.</p>';
   }
   return h+'</div>';
 }
