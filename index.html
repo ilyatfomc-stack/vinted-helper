@@ -461,6 +461,17 @@ function placeKind(t){
   if(t.shop==="clothes")return "Resale clothing";
   return "Thrift / resale";
 }
+var OVER=["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+function overpass(q){
+  var acs=OVER.map(function(){return new AbortController()});
+  var tries=OVER.map(function(u,i){
+    var to=setTimeout(function(){acs[i].abort()},25000);
+    return fetch(u,{method:"POST",signal:acs[i].signal,headers:{"content-type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)})
+      .then(function(r){clearTimeout(to);if(!r.ok)throw new Error("bad "+r.status);return r.json()});
+  });
+  return Promise.any(tries).then(function(j){acs.forEach(function(c){try{c.abort()}catch(e){}});return j},
+    function(){throw new Error("The map service is busy right now. Try again in a minute, or pick a smaller distance.")});
+}
 async function findPlaces(zip,miles){
   var f=state.find;if(f.busy)return;
   f.busy=true;f.err="";f.res=null;f.zip=zip;f.miles=miles;render();
@@ -478,9 +489,7 @@ async function findPlaces(zip,miles){
       +'nwr["shop"="clothes"]["second_hand"~"^(yes|only)$"](around:'+rad+','+lat+','+lon+');'
       +'nwr["amenity"="marketplace"](around:'+rad+','+lat+','+lon+');'
       +');out center tags 400;';
-    var r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
-    if(!r.ok)throw new Error(r.status===429||r.status===504?"The map service is busy. Try again in a minute, or pick a smaller distance.":"The map service had a problem. Try again.");
-    var j=await r.json(),seen={},out=[];
+    var j=await overpass(q),seen={},out=[];
     (j.elements||[]).forEach(function(e){
       var t=e.tags||{};if(!t.name)return;
       var la=e.lat!=null?e.lat:(e.center&&e.center.lat),lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
