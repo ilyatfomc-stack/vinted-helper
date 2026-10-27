@@ -178,9 +178,20 @@ function copy(text,el){
 
 function chipFor(s){return s==="Sold"?"warn":(s==="Completed"||s==="Shipped")?"good":s==="Sourced"?"mute":""}
 
+var BK="vinted_helper_backup";
+function getBk(){try{return parseInt(localStorage.getItem(BK),10)||0}catch(e){return 0}}
+function markBk(){try{localStorage.setItem(BK,String(Date.now()))}catch(e){}}
+function bkReminder(){
+  var real=state.items.filter(function(i){return !i.example});
+  if(!real.length)return "";
+  var last=getBk(),days=last?Math.floor((Date.now()-last)/86400000):-1;
+  if(last&&days<7)return "";
+  return '<div class="card"><h3>Time for a backup</h3><p class="meta" style="margin:4px 0 10px">'+(last?'Your last backup was '+days+' days ago. ':'You have not made a backup yet. ')+'Your items live only in this browser. Copy a backup, then paste it into Notes or a message to yourself.</p><div class="row"><button class="sm pri" data-act="copy-backup">Copy backup</button></div></div>';
+}
 function vToday(){
   var s=stats(),h="";
   var hasEx=state.items.some(function(i){return i.example});
+  h+=bkReminder();
   if(hasEx)h+='<div class="card row between"><span class="meta">Example items are shown so you can see how it works.</span><button class="sm" data-act="clear-examples">Clear examples</button></div>';
   h+='<div class="sec">Your next actions</div>';
   var acts="";
@@ -600,7 +611,7 @@ document.addEventListener("click",function(e){
   else if(a==="copy-val"){copy(b.getAttribute("data-v"),null)}
   else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
   else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
-  else if(a==="copy-backup"){copy(JSON.stringify(state.items),document.getElementById("restore"))}
+  else if(a==="copy-backup"){copy(JSON.stringify(state.items),document.getElementById("restore"));markBk();setTimeout(render,400)}
   else if(a==="copy-csv"){copy(csv(),document.getElementById("restore"))}
   else if(a==="restore"){
     try{var arr=JSON.parse(document.getElementById("restore").value);
