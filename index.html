@@ -207,6 +207,7 @@ function vToday(){
     +'<div class="stat"><span>Avg profit per sale</span><b>'+money(s.avg)+'</b></div>'
     +'<div class="stat"><span>Cash in unsold stock</span><b>'+money(s.tied)+'</b></div></div>';
   h+=sourcesCard();
+  h+=booksCard();
   h+='<p class="meta">Vinted charges sellers 0%. Buyers pay a Buyer Protection fee plus shipping, so keep item price and shipping looking like a deal.</p>';
   return h;
 }
@@ -488,6 +489,80 @@ function sourcesCard(){
     }).join("")
     +'</div><p class="meta" style="margin-top:-6px">Return is profit on sold items divided by what you paid for them.</p>';
 }
+var BKS="vinted_helper_books_v1";
+var EXP_CATS=["Packaging and shipping supplies","Software or subscriptions","Fees","Equipment","Other"];
+state.books={exp:[],trips:[],rate:0.725};state.bkYear=new Date().getFullYear();state.bkArm=null;
+function loadBooks(){
+  try{var raw=localStorage.getItem(BKS);if(raw){var b=JSON.parse(raw);
+    if(b&&Array.isArray(b.exp)&&Array.isArray(b.trips)){state.books={exp:b.exp,trips:b.trips,rate:(typeof b.rate==="number"&&b.rate>0)?b.rate:0.725}}}}catch(e){}
+}
+function persistBooks(){try{localStorage.setItem(BKS,JSON.stringify(state.books))}catch(e){}}
+function bkYears(){
+  var ys={};ys[new Date().getFullYear()]=1;
+  state.books.exp.concat(state.books.trips).forEach(function(r){if(r.date)ys[r.date.slice(0,4)]=1});
+  state.items.forEach(function(i){if(i.date_sold)ys[i.date_sold.slice(0,4)]=1});
+  return Object.keys(ys).sort().reverse();
+}
+function bkSum(y){
+  y=String(y);var B=state.books;
+  var sold=state.items.filter(function(i){return isSold(i)&&(i.date_sold||"").slice(0,4)===y});
+  var rev=0,cost=0,ship=0;
+  sold.forEach(function(i){rev+=i.sold_price||0;cost+=i.cost||0;ship+=i.free_shipping?(i.ship_cost||0):0});
+  var exp=0;B.exp.forEach(function(e){if((e.date||"").slice(0,4)===y)exp+=e.amount});
+  var miles=0;B.trips.forEach(function(t){if((t.date||"").slice(0,4)===y)miles+=t.miles});
+  var ded=miles*B.rate;
+  return {sold:sold.length,rev:rev,cost:cost,ship:ship,exp:exp,miles:miles,ded:ded,net:rev-cost-ship-exp-ded};
+}
+function bkSummaryHtml(){
+  var t=bkSum(state.bkYear);
+  var row=function(a,b,bold){return '<div class="row between" style="margin:0 0 6px"><span>'+a+'</span><span class="num"'+(bold?' style="font-weight:700"':'')+'>'+b+'</span></div>'};
+  return row('Sales ('+t.sold+' item'+(t.sold===1?'':'s')+')',money(t.rev))
+    +row('Cost of items sold','-'+money(t.cost))
+    +row('Shipping you paid','-'+money(t.ship))
+    +row('Expenses logged','-'+money(t.exp))
+    +row('Mileage ('+(Math.round(t.miles*10)/10)+' mi)','-'+money(t.ded))
+    +'<div style="border-top:2px solid var(--edge);margin:8px 0"></div>'
+    +row('Rough net',money(t.net),true);
+}
+function vBooks(){
+  var B=state.books,y=String(state.bkYear),h="";
+  h+='<div class="row between" style="margin:0 0 10px"><button class="sm" data-act="bk-back">Back to Today</button>'
+    +'<div class="field" style="margin:0"><select id="bk-year" aria-label="Year">'+bkYears().map(function(v){return '<option'+(v===y?' selected':'')+'>'+v+'</option>'}).join("")+'</select></div></div>';
+  h+='<div class="card"><h2>Expenses and mileage</h2><p class="meta" style="margin:4px 0 12px">For '+y+'. A rough picture for tax time. This is an estimate, not tax advice. Ask a tax professional what you can deduct.</p><div id="bk-sum">'+bkSummaryHtml()+'</div>'
+    +'<p class="meta" style="margin-top:8px">What you paid for each item is already in your Stock list, so do not log item purchases as expenses.</p>'
+    +'<div class="row"><button class="sm pri" data-act="bk-csv">Copy tax CSV</button></div></div>';
+  h+='<div class="card" id="bk-expform"><h3>Add an expense</h3><div class="grid2">'+fld("x-date","Date",today(),"date")+fld("x-amt","Amount ($)","","number")+'</div>'
+    +fld("x-desc","What was it (e.g. poly mailers)","")
+    +'<div class="field"><label for="x-cat">Category</label><select id="x-cat">'+EXP_CATS.map(function(c){return '<option>'+c+'</option>'}).join("")+'</select></div>'
+    +'<div class="row"><button class="pri" data-act="bk-exp-add">Add expense</button></div></div>';
+  h+='<div class="card" id="bk-tripform"><h3>Log a sourcing trip</h3><div class="grid2">'+fld("t-date","Date",today(),"date")+fld("t-miles","Miles driven (round trip)","","number")+'</div>'
+    +fld("t-note","Where and why (e.g. Goodwill and estate sale)","")
+    +fld("t-rate","Rate per mile ($)",B.rate,"number")
+    +'<div class="meta" style="margin:-4px 0 10px">The IRS business rate for 2026 is $0.725 per mile. Check <a href="https://www.irs.gov/tax-professionals/standard-mileage-rates" target="_blank" rel="noopener" style="color:var(--accent)">irs.gov</a> for other years. Keep a log with the date, miles and purpose.</div>'
+    +'<div class="row"><button class="pri" data-act="bk-trip-add">Add trip</button></div></div>';
+  var ex=B.exp.filter(function(e){return (e.date||"").slice(0,4)===y}).sort(function(a,b){return a.date<b.date?1:-1});
+  var tr=B.trips.filter(function(e){return (e.date||"").slice(0,4)===y}).sort(function(a,b){return a.date<b.date?1:-1});
+  var del=function(k,id){var key=k+id;return '<button class="sm bad" data-act="bk-del" data-k="'+k+'" data-id="'+id+'">'+(state.bkArm===key?'Sure?':'Delete')+'</button>'};
+  h+='<div class="card"><h3>Expenses in '+y+'</h3>'+(ex.length?ex.map(function(e){return '<div class="row between" style="border-top:1px solid var(--edge);padding:8px 0;gap:8px"><div style="min-width:0"><b style="overflow-wrap:anywhere">'+esc(e.desc||e.cat)+'</b><div class="meta">'+esc(e.date)+' · '+esc(e.cat)+'</div></div><div class="row" style="gap:8px;flex:0 0 auto"><b class="num">'+money(e.amount)+'</b>'+del("e",e.id)+'</div></div>'}).join(""):'<div class="meta">Nothing logged yet.</div>')+'</div>';
+  h+='<div class="card"><h3>Trips in '+y+'</h3>'+(tr.length?tr.map(function(e){return '<div class="row between" style="border-top:1px solid var(--edge);padding:8px 0;gap:8px"><div style="min-width:0"><b style="overflow-wrap:anywhere">'+esc(e.note||"Sourcing trip")+'</b><div class="meta">'+esc(e.date)+'</div></div><div class="row" style="gap:8px;flex:0 0 auto"><b class="num">'+(Math.round(e.miles*10)/10)+' mi</b>'+del("t",e.id)+'</div></div>'}).join(""):'<div class="meta">No trips logged yet.</div>')+'</div>';
+  return h;
+}
+function bkCsv(){
+  var y=String(state.bkYear),B=state.books,rows=[["type","date","description","category","amount","miles"]];
+  state.items.filter(function(i){return isSold(i)&&(i.date_sold||"").slice(0,4)===y}).forEach(function(i){
+    rows.push(["Sale",i.date_sold,i.title,i.source||"",i.sold_price||0,""]);
+    rows.push(["Cost of item",i.date_sold,i.title,i.source||"",i.cost||0,""]);
+    if(i.free_shipping&&i.ship_cost)rows.push(["Shipping paid",i.date_sold,i.title,"",i.ship_cost,""]);
+  });
+  B.exp.filter(function(e){return (e.date||"").slice(0,4)===y}).forEach(function(e){rows.push(["Expense",e.date,e.desc,e.cat,e.amount,""])});
+  B.trips.filter(function(e){return (e.date||"").slice(0,4)===y}).forEach(function(e){rows.push(["Mileage",e.date,e.note||"Sourcing trip","Rate "+B.rate+" per mile",Math.round(e.miles*B.rate*100)/100,e.miles])});
+  var q=function(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  return rows.map(function(r){return r.map(q).join(",")}).join("\n");
+}
+function booksCard(){
+  var y=new Date().getFullYear(),t=bkSum(y);
+  return '<div class="sec">Expenses and mileage</div><div class="card"><div class="meta" style="margin:0 0 10px">'+y+': '+(Math.round(t.miles*10)/10)+' miles logged, '+money(t.exp)+' in expenses. Rough net after both: <b>'+money(t.net)+'</b>.</div><div class="row"><button class="sm pri" data-act="to-books">Open expenses and mileage</button></div></div>';
+}
 function vBuy(){
   return '<div class="card" id="buyform"><h2>Buy check</h2><p class="meta" style="margin:4px 0 12px">At the shelf, find out if it is worth buying.</p>'
    +'<div class="grid2">'+fld("b-price","Shelf price ($)","","number")+fld("b-min","Minimum profit ($)","10","number")+'</div>'
@@ -616,7 +691,7 @@ function vFind(){
 
 function render(){
   var v=document.getElementById("view");
-  v.innerHTML=({today:vToday,buy:function(){return vBuy()+vFind()},add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
+  v.innerHTML=({today:vToday,buy:function(){return vBuy()+vFind()},books:vBooks,add:vAdd,scan:vScan,stock:vStock,listing:vListing,price:vPrice})[state.tab]();
   document.getElementById("nav").innerHTML=TABS.map(function(t){return '<button data-tab="'+t[0]+'"'+(t[0]===state.tab?' aria-current="page"':"")+'>'+t[1]+'</button>'}).join("");
   if(state.tab==="add")formPreview();
   if(state.tab==="price")calcPrice();
@@ -642,6 +717,7 @@ document.addEventListener("click",function(e){
   var b=e.target.closest("[data-act]");if(!b)return;
   var a=b.getAttribute("data-act"),id=parseInt(b.getAttribute("data-id"),10);
   if(a!=="delete"&&state.armDelete){state.armDelete=null}
+  if(a!=="bk-del"&&state.bkArm){state.bkArm=null}
   if(a==="save"){
     var d=readForm();if(!d.title){toast("Give the item a name first");document.getElementById("f-title").focus();return}
     if(state.editing){Object.assign(byId(state.editing),d)}
@@ -688,14 +764,44 @@ document.addEventListener("click",function(e){
   else if(a==="copy-val"){copy(b.getAttribute("data-v"),null)}
   else if(a==="copy-title"){copy(document.getElementById("l-title").value,document.getElementById("l-title"))}
   else if(a==="copy-body"){copy(document.getElementById("l-body").value,document.getElementById("l-body"))}
-  else if(a==="copy-backup"){copy(JSON.stringify(state.items),document.getElementById("restore"));markBk();setTimeout(render,400)}
+  else if(a==="copy-backup"){copy(JSON.stringify({v:2,items:state.items,books:state.books}),document.getElementById("restore"));markBk();setTimeout(render,400)}
   else if(a==="copy-csv"){copy(csv(),document.getElementById("restore"))}
   else if(a==="restore"){
-    try{var arr=JSON.parse(document.getElementById("restore").value);
+    try{var parsed=JSON.parse(document.getElementById("restore").value);
+      var arr=Array.isArray(parsed)?parsed:(parsed&&parsed.items);
       if(!Array.isArray(arr)||!arr.every(function(x){return x&&typeof x.title==="string"&&typeof x.id==="number"}))throw 0;
-      state.items=arr;persist();toast("Backup restored");render();
+      state.items=arr;persist();
+      var pb=parsed&&!Array.isArray(parsed)&&parsed.books;
+      if(pb&&Array.isArray(pb.exp)&&Array.isArray(pb.trips)){state.books={exp:pb.exp,trips:pb.trips,rate:(typeof pb.rate==="number"&&pb.rate>0)?pb.rate:0.725};persistBooks()}
+      toast("Backup restored");render();
     }catch(err){toast("That is not a valid backup")}
   }
+  else if(a==="to-books"){go("books")}
+  else if(a==="bk-back"){go("today")}
+  else if(a==="bk-exp-add"){
+    var xa=num(document.getElementById("x-amt").value),xd=document.getElementById("x-date").value||today();
+    if(!(xa>0)){toast("Enter the amount");return}
+    var xc=document.getElementById("x-cat").value,xs=document.getElementById("x-desc").value.trim();
+    var xid=state.books.exp.reduce(function(m,r){return Math.max(m,r.id)},0)+1;
+    state.books.exp.push({id:xid,date:xd,desc:xs||xc,cat:xc,amount:Math.round(xa*100)/100});
+    persistBooks();toast("Expense added");state.bkYear=xd.slice(0,4);render();
+  }
+  else if(a==="bk-trip-add"){
+    var tm=num(document.getElementById("t-miles").value),td=document.getElementById("t-date").value||today();
+    if(!(tm>0)){toast("Enter the miles driven");return}
+    var tn=document.getElementById("t-note").value.trim();
+    var tid=state.books.trips.reduce(function(m,r){return Math.max(m,r.id)},0)+1;
+    state.books.trips.push({id:tid,date:td,miles:tm,note:tn});
+    persistBooks();toast("Trip added");state.bkYear=td.slice(0,4);render();
+  }
+  else if(a==="bk-del"){
+    var bk=b.getAttribute("data-k"),key=bk+id;
+    if(state.bkArm===key){
+      if(bk==="e")state.books.exp=state.books.exp.filter(function(r){return r.id!==id});else state.books.trips=state.books.trips.filter(function(r){return r.id!==id});
+      state.bkArm=null;persistBooks();render();
+    }else{state.bkArm=key;render()}
+  }
+  else if(a==="bk-csv"){copy(bkCsv(),null)}
 });
 document.addEventListener("input",function(e){
   if(e.target.closest("#form"))formPreview();
@@ -709,6 +815,8 @@ document.addEventListener("change",function(e){
     if(f)readPhoto(f).then(function(u){state.scan.img=u;state.scan.result=null;state.scan.err="";render()}).catch(function(er){state.scan.err=er.message;render()});
   }
   if(e.target.id==="b-cam"||e.target.id==="b-pick"){var bf=e.target.files&&e.target.files[0];if(bf)buyScan(bf);e.target.value=""}
+  if(e.target.id==="bk-year"){state.bkYear=e.target.value;render()}
+  if(e.target.id==="t-rate"){var rv=num(e.target.value);if(rv>0){state.books.rate=rv;persistBooks();var sm=document.getElementById("bk-sum");if(sm)sm.innerHTML=bkSummaryHtml()}}
   if(e.target.id==="b-shot"){var sf=e.target.files&&e.target.files[0];if(sf)shotPrices(sf);e.target.value=""}
   if(e.target.id==="flt"){state.filter=e.target.value;render()}
   if(e.target.id==="l-item"){state.listId=parseInt(e.target.value,10)||null;render()}
@@ -716,5 +824,5 @@ document.addEventListener("change",function(e){
 
 document.getElementById("today-date").textContent=new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
 applyTheme(getTheme());
-load();render();
+load();loadBooks();render();
 </script>
