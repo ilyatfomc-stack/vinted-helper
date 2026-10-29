@@ -131,9 +131,9 @@ function persist(){try{localStorage.setItem(KEY,JSON.stringify(state.items))}cat
 function examples(){
   function mk(id,o){return Object.assign({id:id,example:true,category:"",measurements:"",notes:"",packaging:DEF_PACK,free_shipping:0,ship_cost:0,sold_price:0,date_added:daysAgo(40),date_listed:"",date_sold:""},o)}
   return [
-    mk(1,{title:"501 jeans",brand:"Levi's",category:"Jeans",size:"W30 L32",color:"Blue",condition:"Good",flaws:"Small fray at hem",cost:5,list_price:28,status:"Sold",date_listed:daysAgo(12),date_sold:daysAgo(3),sold_price:26}),
-    mk(2,{title:"Zip hoodie",brand:"Nike",category:"Hoodie",size:"M",color:"Grey",condition:"Excellent",flaws:"",cost:6,list_price:30,status:"Sourced"}),
-    mk(3,{title:"Wool blazer",brand:"Zara",category:"Blazer",size:"S",color:"Black",condition:"Good",flaws:"",cost:4,list_price:24,status:"Listed",date_listed:daysAgo(34)})
+    mk(1,{title:"501 jeans",brand:"Levi's",category:"Jeans",size:"W30 L32",color:"Blue",condition:"Good",flaws:"Small fray at hem",source:"Goodwill",cost:5,list_price:28,status:"Sold",date_listed:daysAgo(12),date_sold:daysAgo(3),sold_price:26}),
+    mk(2,{title:"Zip hoodie",brand:"Nike",category:"Hoodie",size:"M",color:"Grey",condition:"Excellent",flaws:"",source:"Estate sale",cost:6,list_price:30,status:"Sourced"}),
+    mk(3,{title:"Wool blazer",brand:"Zara",category:"Blazer",size:"S",color:"Black",condition:"Good",flaws:"",source:"Goodwill",cost:4,list_price:24,status:"Listed",date_listed:daysAgo(34)})
   ];
 }
 
@@ -206,6 +206,7 @@ function vToday(){
     +'<div class="stat"><span>Revenue</span><b>'+money(s.rev)+'</b></div>'
     +'<div class="stat"><span>Avg profit per sale</span><b>'+money(s.avg)+'</b></div>'
     +'<div class="stat"><span>Cash in unsold stock</span><b>'+money(s.tied)+'</b></div></div>';
+  h+=sourcesCard();
   h+='<p class="meta">Vinted charges sellers 0%. Buyers pay a Buyer Protection fee plus shipping, so keep item price and shipping looking like a deal.</p>';
   return h;
 }
@@ -213,11 +214,11 @@ function vToday(){
 function fld(id,label,val,type,extra){return '<div class="field"><label for="'+id+'">'+label+'</label><input id="'+id+'" type="'+(type||"text")+'" '+(type==="number"?'inputmode="decimal" step="0.01" ':"")+'value="'+esc(val)+'" '+(extra||"")+'></div>'}
 function vAdd(){
   var it=state.editing?state.items.filter(function(i){return i.id===state.editing})[0]:null;
-  it=it||{title:"",brand:"",category:"",size:"",color:"",measurements:"",flaws:"",notes:"",condition:"Excellent",cost:"",packaging:DEF_PACK,list_price:"",free_shipping:0,ship_cost:""};
+  it=it||{title:"",brand:"",category:"",size:"",color:"",measurements:"",flaws:"",notes:"",source:"",condition:"Excellent",cost:"",packaging:DEF_PACK,list_price:"",free_shipping:0,ship_cost:""};
   var h='<div class="card" id="form"><h2>'+(state.editing?"Edit item":"Add item")+'</h2><div style="height:12px"></div>'
    +fld("f-title","Item (e.g. 501 jeans)",it.title)
    +'<div class="grid2">'+fld("f-brand","Brand",it.brand)+fld("f-category","Category",it.category)+fld("f-size","Size",it.size)+fld("f-color","Color",it.color)+'</div>'
-   +fld("f-measurements","Measurements",it.measurements)+fld("f-flaws","Flaws (be honest)",it.flaws)+fld("f-notes","Extra notes",it.notes)
+   +fld("f-source","Where you got it (store)",it.source||"","text",'list="src-list"')+srcList()+fld("f-measurements","Measurements",it.measurements)+fld("f-flaws","Flaws (be honest)",it.flaws)+fld("f-notes","Extra notes",it.notes)
    +'<div class="field"><label for="f-condition">Condition</label><select id="f-condition">'+CONDITIONS.map(function(c){return '<option'+(c===it.condition?" selected":"")+'>'+c+'</option>'}).join("")+'</select></div>'
    +'<div class="grid2">'+fld("f-cost","What you paid ($)",it.cost,"number")+fld("f-packaging","Packaging ($)",it.packaging,"number")+fld("f-list_price","List price ($)",it.list_price,"number")+fld("f-ship_cost","Shipping if you pay ($)",it.ship_cost,"number")+'</div>'
    +'<label class="check" for="f-free"><input id="f-free" type="checkbox"'+(it.free_shipping?" checked":"")+'>I am offering free shipping</label>'
@@ -227,7 +228,7 @@ function vAdd(){
 }
 function readForm(){
   var g=function(k){return document.getElementById("f-"+k).value.trim()};
-  var d={};["title","brand","category","size","color","measurements","flaws","notes","condition"].forEach(function(k){d[k]=g(k)});
+  var d={};["title","brand","category","size","color","measurements","flaws","notes","source","condition"].forEach(function(k){d[k]=g(k)});
   ["cost","packaging","list_price","ship_cost"].forEach(function(k){d[k]=num(g(k))});
   d.free_shipping=document.getElementById("f-free").checked?1:0;return d;
 }
@@ -324,10 +325,10 @@ function friendly(m){
   if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Could not reach Anthropic. Check your connection and try again.";
   return m||"Something went wrong. Try again.";
 }
-function readPhoto(file){return new Promise(function(res,rej){
+function readPhoto(file,maxDim){return new Promise(function(res,rej){
   var fr=new FileReader();
   fr.onload=function(){var img=new Image();
-    img.onload=function(){var k=Math.min(1,1024/Math.max(img.width,img.height));
+    img.onload=function(){var k=Math.min(1,(maxDim||1024)/Math.max(img.width,img.height));
       var c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
       c.getContext("2d").drawImage(img,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",0.82))};
     img.onerror=function(){rej(new Error("Could not read that photo"))};img.src=fr.result};
@@ -383,7 +384,7 @@ function vScan(){
      +fld("s-title","Item",r.title||"")
      +fld("s-brand","Brand",r.brand||"")+tagNote(r.brand_from_tag,r.brand)
      +'<div class="grid2">'+fld("s-size","Size",r.size||"")+fld("s-color","Color",r.color||"")+'</div>'+tagNote(r.size_from_tag,r.size)
-     +fld("s-category","Category",r.category||"")
+     +fld("s-category","Category",r.category||"")+fld("s-src","Where you got it (store)",lastSrc(),"text",'list="src-list"')+srcList()
      +'<div class="field"><label for="s-condition">Condition</label><select id="s-condition">'+CONDITIONS.map(function(c){return '<option'+(c===r.condition?" selected":"")+'>'+c+'</option>'}).join("")+'</select><div class="meta">A guess from the photo, check it</div></div>'
      +fld("s-flaws","Flaws (be honest)",r.flaws||"")
      +'<div class="grid2">'+fld("s-cost","What you paid ($)","","number")+fld("s-profit","Profit you want ($)","10","number")+'</div>'
@@ -419,12 +420,86 @@ function buyPrompt(){
   var shelf=num(g("b-price")),min=num(g("b-min"))||10;
   return "I am at a store deciding whether to buy this item to resell on Vinted. The shelf price is "+(shelf?money(shelf):"[price]")+". I want at least "+money(min)+" profit after about $0.75 for packaging.\n\nLook at my photo (item, tag, and any flaws) and tell me:\n1. What the item is: brand, type, size, color. Only what you can actually read or see. If you cannot read the brand or size, say so instead of guessing.\n2. Condition problems I should check before buying (stains, pilling, fading, holes, missing parts).\n3. A realistic resale price range on Vinted in this condition, and how sure you are. Say plainly if this brand or item is one you do not know well.\n4. The search words I should use to find sold prices.\n5. BUY, MAYBE, or SKIP at the shelf price, with one line of reasoning.";
 }
+var LS="vinted_helper_lastsrc";
+function lastSrc(){try{return localStorage.getItem(LS)||""}catch(e){return ""}}
+function saveSrc(v){try{localStorage.setItem(LS,v)}catch(e){}}
+function srcList(){
+  var seen={},o=[];state.items.forEach(function(i){var v=(i.source||"").trim();if(v&&!seen[v.toLowerCase()]){seen[v.toLowerCase()]=1;o.push(v)}});
+  return '<datalist id="src-list">'+o.map(function(v){return '<option value="'+esc(v)+'">'}).join("")+'</datalist>';
+}
+var BUY_PROMPT=SCAN_PROMPT.replace("Return only the JSON.","Also include search_words: 3 to 6 words a person would type to find sold prices for this exact item (brand only if readable, item type, key material or style). Return only the JSON.");
+var PRICES_PROMPT="This is a screenshot of marketplace search results (eBay sold listings, Poshmark, Vinted or similar). Answer with one JSON object: {\"prices\":[numbers],\"sold_only\":true or false,\"note\":\"short text\"}. List the final price of each listing shown, in dollars as plain numbers, without shipping. If the page separates sold listings from active ones, include only sold listings and set sold_only true. If you cannot tell whether they are sold, set sold_only false. Skip ads, sponsored items and struck-through prices. Return at most 12 prices. Return only the JSON.";
+async function askClaude(dataUrl,prompt,max){
+  var key=getKey();if(!key)throw new Error("Add your Claude key in the Scan tab first.");
+  var r=await fetch(AAPI,{method:"POST",
+    headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:AMODEL,max_tokens:max||1500,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:dataUrl.split(",")[1]}},{type:"text",text:prompt}]}]})});
+  var j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error((j.error&&j.error.message)||("Error "+r.status));
+  var t=(j.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
+  var m=t.match(/\{[\s\S]*\}/);
+  if(!m)throw new Error(t?("Claude replied, but not in the expected format: "+t.slice(0,140)):"No text came back. Try again.");
+  try{return JSON.parse(m[0])}catch(pe){throw new Error("Claude's answer could not be read. Try again.")}
+}
+function bsay(id,h){var e=document.getElementById(id);if(e)e.innerHTML=h}
+function bfail(id,e){bsay(id,'<span style="color:var(--bad)">'+esc(friendly(e&&e.message))+'</span>')}
+async function buyScan(file){
+  if(!getKey()){bsay("b-ai",'Add your Claude key first. <button class="sm" data-tab="scan">Open Scan tab</button>');return}
+  bsay("b-ai","Reading the photo...");
+  try{
+    var r=await askClaude(await readPhoto(file,1024),BUY_PROMPT,1500);
+    state.buyDetail=r;
+    var q=String(r.search_words||[r.brand,r.title,r.size].filter(Boolean).join(" ")).trim();
+    var qi=document.getElementById("b-q");if(qi)qi.value=q;
+    var bits=[r.brand,r.title,r.size?("size "+r.size):"",r.color].filter(Boolean).join(", ");
+    bsay("b-ai",'<b>Read:</b> '+esc(bits||"nothing clear")+'. '+(r.brand?(r.brand_from_tag?'Brand read from the tag. ':'Brand is a guess, check it. '):'')+(r.flaws?'<br><b>Flaws seen:</b> '+esc(r.flaws)+'.':'')+'<br>AI can be wrong, so check the tag.');
+    buyCalc();
+  }catch(e){bfail("b-ai",e)}
+}
+async function shotPrices(file){
+  if(!getKey()){bsay("b-ai2",'Add your Claude key first. <button class="sm" data-tab="scan">Open Scan tab</button>');return}
+  bsay("b-ai2","Reading the prices...");
+  try{
+    var r=await askClaude(await readPhoto(file,2000),PRICES_PROMPT,1500);
+    var pr=(r.prices||[]).map(Number).filter(function(n){return n>0&&n<10000}).slice(0,12);
+    if(!pr.length){bsay("b-ai2","No prices found. Try a clearer screenshot of the sold listings.");return}
+    var ci=document.getElementById("b-comps");
+    if(ci){var old=ci.value.trim();ci.value=(old?old+", ":"")+pr.join(", ")}
+    var lo=Math.min.apply(null,pr),hi=Math.max.apply(null,pr);
+    bsay("b-ai2",'Added '+pr.length+' price'+(pr.length===1?'':'s')+' ('+money(lo)+' to '+money(hi)+'). '+(r.sold_only?'These look like sold prices.':'<b>I could not tell if these are sold prices, so check the screenshot.</b>')+' Make sure they match your item.');
+    buyCalc();
+  }catch(e){bfail("b-ai2",e)}
+}
+function sourcesCard(){
+  var by={},order=[];
+  state.items.forEach(function(i){
+    var nm=(i.source||"").trim();if(!nm)return;var k=nm.toLowerCase();
+    if(!by[k]){by[k]={name:nm,n:0,spent:0,sold:0,pr:0,soldCost:0};order.push(k)}
+    var o=by[k];o.n++;o.spent+=i.cost;
+    if(isSold(i)){o.sold++;o.pr+=profit(i);o.soldCost+=i.cost}
+  });
+  if(!order.length)return "";
+  var rows=order.map(function(k){return by[k]}).sort(function(a,b){return b.pr-a.pr||b.n-a.n});
+  return '<div class="sec">Where your profit comes from</div><div class="card">'
+    +rows.map(function(o,ix){
+      var roi=o.soldCost>0?Math.round(o.pr/o.soldCost*100)+'% return':'no sales yet';
+      return '<div style="'+(ix?'border-top:1px solid var(--edge);':'')+'padding:'+(ix?'10px':'0 0 10px')+' 0 '+(ix?'0':'0')+'"><div class="row between"><b>'+esc(o.name)+'</b><b class="num" style="color:'+(o.pr>=0?"var(--good)":"var(--bad)")+'">'+money(o.pr)+'</b></div>'
+        +'<div class="meta">'+o.n+' item'+(o.n===1?'':'s')+' bought, '+o.sold+' sold, '+money(o.spent)+' spent, '+roi+'</div></div>';
+    }).join("")
+    +'</div><p class="meta" style="margin-top:-6px">Return is profit on sold items divided by what you paid for them.</p>';
+}
 function vBuy(){
   return '<div class="card" id="buyform"><h2>Buy check</h2><p class="meta" style="margin:4px 0 12px">At the shelf, find out if it is worth buying.</p>'
    +'<div class="grid2">'+fld("b-price","Shelf price ($)","","number")+fld("b-min","Minimum profit ($)","10","number")+'</div>'
+   +fld("b-src","Store (where you are)",lastSrc(),"text",'list="src-list"')+srcList()
+   +'<div class="row" style="margin:0 0 6px"><label class="lnk" for="b-cam">Scan item photo</label><label class="lnk" for="b-pick">Choose photo</label></div>'
+   +'<input id="b-cam" type="file" accept="image/*" capture="environment" hidden><input id="b-pick" type="file" accept="image/*" hidden>'
+   +'<div class="meta" id="b-ai" style="margin:0 0 10px">Photograph the item and its tag to fill in the search words.</div>'
    +fld("b-q","Search words (brand, item, size)","")
    +'<div class="row" id="b-links" style="margin:0 0 4px"></div>'
    +'<div class="field"><label for="b-comps">Prices you found (3 to 5, separate with commas)</label><input id="b-comps" inputmode="decimal" placeholder="22, 28, 31"></div>'
+   +'<div class="row" style="margin:0 0 6px"><label class="lnk" for="b-shot">Read prices from a screenshot</label></div><input id="b-shot" type="file" accept="image/*" hidden>'
+   +'<div class="meta" id="b-ai2" style="margin:0 0 10px">Screenshot eBay sold listings (or similar), then pick it here.</div>'
    +fld("b-fee","Selling fee (%)","0","number")
    +'<div class="meta" style="margin:-4px 0 12px">Vinted charges sellers 0%. Raise this if you plan to sell somewhere else.</div>'
    +'<div class="preview" id="b-out" style="margin:0 0 12px"></div>'
@@ -557,7 +632,7 @@ function setStatus(id,st,price){
   persist();render();
 }
 function csv(){
-  var cols=["id","title","brand","category","size","color","condition","cost","packaging","list_price","free_shipping","ship_cost","status","date_added","date_listed","date_sold","sold_price"];
+  var cols=["id","title","brand","category","source","size","color","condition","cost","packaging","list_price","free_shipping","ship_cost","status","date_added","date_listed","date_sold","sold_price"];
   var q=function(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   return [cols.join(",")].concat(state.items.map(function(i){return cols.map(function(c){return q(i[c])}).join(",")})).join("\n");
 }
@@ -588,8 +663,8 @@ document.addEventListener("click",function(e){
     var sg=function(i){return document.getElementById(i).value.trim()};
     if(!sg("s-title")){toast("Give the item a name first");return}
     var sid=state.items.reduce(function(m,i){return Math.max(m,i.id)},0)+1;
-    state.items.push({id:sid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:sg("s-title"),brand:sg("s-brand"),category:sg("s-category"),size:sg("s-size"),color:sg("s-color"),measurements:"",flaws:sg("s-flaws"),notes:"",condition:sg("s-condition"),cost:num(sg("s-cost")),packaging:DEF_PACK,list_price:state.scan.price,free_shipping:0,ship_cost:0});
-    persist();toast("Added to inventory");state.scan=freshScan();go("stock");
+    state.items.push({id:sid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:sg("s-title"),brand:sg("s-brand"),category:sg("s-category"),size:sg("s-size"),color:sg("s-color"),measurements:"",flaws:sg("s-flaws"),notes:"",condition:sg("s-condition"),source:sg("s-src"),cost:num(sg("s-cost")),packaging:DEF_PACK,list_price:state.scan.price,free_shipping:0,ship_cost:0});
+    if(sg("s-src"))saveSrc(sg("s-src"));persist();toast("Added to inventory");state.scan=freshScan();go("stock");
   }
   else if(a==="theme"){var nt=THEME_NEXT[getTheme()];try{localStorage.setItem(TK,nt)}catch(err){}applyTheme(nt);toast("Theme: "+THEME_NAME[nt])}
   else if(a==="buy-copy"){copy(document.getElementById("b-prompt").value,document.getElementById("b-prompt"))}
@@ -599,7 +674,9 @@ document.addEventListener("click",function(e){
     if(!bg("b-q")){toast("Add search words so the item has a name");return}
     if(!bshelf){toast("Enter the shelf price");return}
     var bid=state.items.reduce(function(m,i){return Math.max(m,i.id)},0)+1;
-    state.items.push({id:bid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:bg("b-q"),brand:"",category:"",size:"",color:"",measurements:"",flaws:"",notes:"",condition:"Good",cost:bshelf,packaging:DEF_PACK,list_price:(state.buy&&state.buy.ok)?Math.round(state.buy.med):0,free_shipping:0,ship_cost:0});
+    var bd=state.buyDetail||{},bsrc=bg("b-src");
+    state.items.push({id:bid,status:"Sourced",date_added:today(),date_listed:"",date_sold:"",sold_price:0,title:bd.title||bg("b-q"),brand:bd.brand||"",category:bd.category||"",size:bd.size||"",color:bd.color||"",measurements:"",flaws:bd.flaws||"",notes:"",source:bsrc,condition:(CONDITIONS.indexOf(bd.condition)>-1?bd.condition:"Good"),cost:bshelf,packaging:DEF_PACK,list_price:(state.buy&&state.buy.ok)?Math.round(state.buy.med):0,free_shipping:0,ship_cost:0});
+    if(bsrc)saveSrc(bsrc);state.buyDetail=null;
     persist();toast("Added to inventory");go("stock");
   }
   else if(a==="clear-examples"){state.items=state.items.filter(function(i){return !i.example});persist();render()}
@@ -631,6 +708,8 @@ document.addEventListener("change",function(e){
     var f=e.target.files&&e.target.files[0];
     if(f)readPhoto(f).then(function(u){state.scan.img=u;state.scan.result=null;state.scan.err="";render()}).catch(function(er){state.scan.err=er.message;render()});
   }
+  if(e.target.id==="b-cam"||e.target.id==="b-pick"){var bf=e.target.files&&e.target.files[0];if(bf)buyScan(bf);e.target.value=""}
+  if(e.target.id==="b-shot"){var sf=e.target.files&&e.target.files[0];if(sf)shotPrices(sf);e.target.value=""}
   if(e.target.id==="flt"){state.filter=e.target.value;render()}
   if(e.target.id==="l-item"){state.listId=parseInt(e.target.value,10)||null;render()}
 });
