@@ -2,6 +2,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Flip Side">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#4A2C14">
+<link rel="apple-touch-icon" id="app-icon" href="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
 <title>The Flip Side</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caprasimo&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap">
 <style>
@@ -825,4 +830,7 @@ document.addEventListener("change",function(e){
 document.getElementById("today-date").textContent=new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
 applyTheme(getTheme());
 load();loadBooks();render();
+(function(){function mk(){try{var c=document.createElement("canvas");c.width=c.height=180;var x=c.getContext("2d");x.fillStyle="#4A2C14";x.fillRect(0,0,180,180);[["#B84A12",131],["#E0A526",143],["#6B7A2A",155]].forEach(function(s){x.fillStyle=s[0];x.fillRect(0,s[1],180,12)});x.fillStyle="#F4E7C6";x.font='105px Caprasimo,"Cooper Black",Georgia,serif';x.textAlign="center";x.fillText("F",90,118);var l=document.getElementById("app-icon");if(l)l.href=c.toDataURL("image/png")}catch(e){}}
+try{(document.fonts&&document.fonts.load?document.fonts.load("105px Caprasimo","F"):Promise.resolve()).then(mk,mk)}catch(e){mk()}})();
+if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 </script>
